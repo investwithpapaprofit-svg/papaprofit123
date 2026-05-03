@@ -1,0 +1,112 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User's financial profile",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "lastUpdated": { "type": "string", "format": "date-time" },
+        "profile": {
+          "type": "object",
+          "properties": {
+            "income": { "type": "number" },
+            "expenses": { "type": "number" },
+            "savings": { "type": "number" },
+            "loans": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" },
+                  "amount": { "type": "number" },
+                  "rate": { "type": "number" },
+                  "emi": { "type": "number" }
+                }
+              }
+            },
+            "assets": {
+              "type": "object",
+              "properties": {
+                "property": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "name": { "type": "string" },
+                      "value": { "type": "number" },
+                      "mortgageable": { "type": "boolean" }
+                    }
+                  }
+                },
+                "gold": { "type": "number" },
+                "cash": { "type": "number" },
+                "other": { "type": "array" }
+              }
+            },
+            "subscriptions": { "type": "array" },
+            "goals": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" },
+                  "target": { "type": "number" },
+                  "saved": { "type": "number" },
+                  "months": { "type": "number" }
+                }
+              }
+            },
+            "riskProfile": { "type": "string" }
+          }
+        },
+        "portfolio": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "quantity": { "type": "number" },
+              "buyPrice": { "type": "number" },
+              "currentPrice": { "type": "number" }
+            }
+          }
+        }
+      },
+      "required": ["uid", "name", "email", "createdAt", "profile", "portfolio"]
+    },
+    "ChatHistory": {
+      "title": "ChatHistory",
+      "description": "User's chat history",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "messages": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "role": { "type": "string" },
+              "content": { "type": "string" },
+              "timestamp": { "type": "number" }
+            }
+          }
+        }
+      },
+      "required": ["uid", "messages"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "User profiles"
+    },
+    "/chats/{userId}": {
+      "schema": { "$ref": "#/entities/ChatHistory" },
+      "description": "User chat histories"
+    }
+  }
+}
