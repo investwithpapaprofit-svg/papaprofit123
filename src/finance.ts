@@ -204,22 +204,36 @@ export const finance = {
     return insights.sort((a, b) => priorityScore[b.priority] - priorityScore[a.priority]);
   },
   
-  getNextBestAction(insights: Insight[]): string {
-     const topLevel = insights.find(i => i.priority === 'high');
-     if (topLevel) return `Next Best Action: **${topLevel.title}** - ${topLevel.description}`;
-     
-     const mediumLevel = insights.find(i => i.priority === 'medium');
-     if (mediumLevel) return `Next Best Action: **${mediumLevel.title}** - ${mediumLevel.description}`;
-     
-     return "Maintain your current financial habits and keep investing!";
+  getNextBestAction(profile: UserProfile): string {
+    const totalLoans = this.totalLiabilities(profile);
+    const income = this.totalIncome(profile);
+    const savingsRate = this.savingsRate(profile);
+    const stockAssets = (profile.portfolio || []).filter(p => ['stock', 'etf', 'mutual_fund'].includes(p.assetType));
+
+    if (income > 0 && totalLoans > (income * 12)) {
+      return "Next Best Action: **Focus on reducing your debt aggressively before investing.**";
+    }
+
+    if (income > 0 && savingsRate < 20) {
+      return "Next Best Action: **Increase your savings rate to at least 20% of your income.**";
+    }
+
+    if (stockAssets.length === 0) {
+      return "Next Best Action: **Start investing in diversified equity like index funds.**";
+    }
+
+    return "Next Best Action: **Optimize your portfolio allocation for better long-term growth.**";
   },
 
   compareWithLast(profile: UserProfile): string[] {
-    if (!profile.history || profile.history.length < 2) return [];
+    if (!profile.history) return [];
+    
+    const snapshots = profile.history.filter(h => h.metricsSnapshot != null);
+    if (snapshots.length < 2) return [];
 
-    // The most recent snapshot is history[length-1], previous is history[length-2]
-    const last = profile.history[profile.history.length - 2].metricsSnapshot;
-    const current = profile.history[profile.history.length - 1].metricsSnapshot;
+    // The most recent snapshot is snapshots[length-1], previous is snapshots[length-2]
+    const last = snapshots[snapshots.length - 2].metricsSnapshot;
+    const current = snapshots[snapshots.length - 1].metricsSnapshot;
     
     if (!last || !current) return [];
 
@@ -243,11 +257,12 @@ export const finance = {
   },
 
   generateWeeklyReport(profile: UserProfile): string {
-    if (!profile.history || profile.history.length < 2) {
-      return "Not enough data for a weekly report yet.";
-    }
+    if (!profile.history) return "Not enough data for a weekly report yet.";
+    
+    const snapshots = profile.history.filter(h => h.metricsSnapshot != null);
+    if (snapshots.length < 2) return "Not enough data for a weekly report yet.";
 
-    const first = profile.history[0].metricsSnapshot;
+    const first = snapshots[0].metricsSnapshot;
     const last = profile.metrics;
 
     if (!first || !last) return "Not enough metrics for a report.";
@@ -255,7 +270,7 @@ export const finance = {
     const netWorthChange = last.netWorth - first.netWorth;
     const fhsChange = last.financialHealthScore - first.financialHealthScore;
 
-    return `Weekly Report:\n\nNet Worth Change: ${netWorthChange >= 0 ? '+' : ''}₹${netWorthChange.toLocaleString('en-IN')}\nFinancial Score Change: ${fhsChange >= 0 ? '+' : ''}${fhsChange}\n\nKeep updating your data regularly to improve accuracy.`;
+    return `Weekly Report:\n\nNet Worth Change: ${netWorthChange >= 0 ? '+' : ''}₹${netWorthChange.toLocaleString('en-IN')}\nFinancial Score Change: ${fhsChange >= 0 ? '+' : ''}${fhsChange}\n\nWeekly insight: You're building financial consistency. Keep going.`;
   },
 
   recalculateMetrics(profile: UserProfile): void {

@@ -46,6 +46,11 @@ export const parser = {
         - Handle ranges properly: If a user says "40-50k", extract 45000 as the average. If the range is too broad, set clarificationNeeded to true.
         - Assets/Loans are ALWAYS TOTAL CURRENT BALANCE.
         - Handle numerical shorthands: 'k' -> 1000, 'lakh' -> 100000, 'cr' -> 10000000.
+        - Parse Multiple Entities: Extract EVERY entity mentioned. 
+          * e.g. "I earn 50k and spend 30k" -> extract BOTH income Sources & expenses.
+          * e.g. "income 60k expenses 30k loan 1 lakh" -> extract incomeSources, expenses, AND loans.
+          * e.g. "I have gold and 2 lakhs in stocks" -> extract BOTH assets (gold) and portfolio (stocks).
+          * e.g. "I have 2 loans 50k and 1 lakh" -> extract TWO separate loans.
         - Detect multiple entities (e.g. "I have gold and 2 lakhs in stocks" -> 2 different assets/portfolio).
         - If the message is completely ambiguous or missing critical amounts for their main point, set clarificationNeeded to true and write a clarificationMessage.
         - Use confidence score to indicate how sure you are about the extracted numbers and intents.

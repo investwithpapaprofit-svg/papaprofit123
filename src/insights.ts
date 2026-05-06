@@ -59,7 +59,7 @@ Financial Health Score: ${fhsScore > 0 ? fhsScore + '/100 (' + fhsInfo.label + '
 SYSTEM INSIGHTS (Address the HIGH priority ones if relevant):
 ${(profile.insights || []).map(i => `[${i.priority.toUpperCase()}] ${i.title}: ${i.description}`).join('\n')}
 
-${finance.getNextBestAction(profile.insights || [])}
+${finance.getNextBestAction(profile)}
 
 CURRENT COPILOT ANALYSIS:
 - Extracted: ${parsedData.updates.length > 0 ? parsedData.updates.join(', ') : 'No new hard data found.'}
@@ -91,7 +91,7 @@ Premium Status: ${profile.isPremium ? 'PRO USER - Give advanced investment, AI p
       
       // Memory Engine & Report Injection (Deterministic)
       const changes = finance.compareWithLast(profile);
-      const action = finance.getNextBestAction(profile.insights || []);
+      const action = finance.getNextBestAction(profile);
       let report = '';
       
       // Note: We'll show the report roughly every 5th snapshot. For now, since user wants it visible, we'll check if it's the 5th message in history or similar.
