@@ -60,6 +60,7 @@ export const parser = {
       const extracted = data.extracted_data || {};
 
       if (extracted.personal) {
+          newProfile.personal = newProfile.personal || {};
           if(extracted.personal.name) newProfile.personal.name = extracted.personal.name;
           if(extracted.personal.age) newProfile.personal.age = extracted.personal.age;
           if(extracted.personal.riskProfile) newProfile.personal.riskProfile = extracted.personal.riskProfile;

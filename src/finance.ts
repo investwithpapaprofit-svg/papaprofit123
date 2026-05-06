@@ -2,26 +2,26 @@ import { UserProfile, Insight, FinancialGoal } from './types';
 
 export const finance = {
   totalAssets(profile: UserProfile): number {
-    const assetsTotal = profile.assets.reduce((sum, a) => sum + (a.value || 0), 0);
-    const portfolioTotal = profile.portfolio.reduce((sum, p) => sum + (p.marketValue || p.currentPrice || p.averageBuyPrice || 0) * p.quantity, 0);
+    const assetsTotal = (profile.assets || []).reduce((sum, a) => sum + (a.value || 0), 0);
+    const portfolioTotal = (profile.portfolio || []).reduce((sum, p) => sum + (p.marketValue || p.currentPrice || p.averageBuyPrice || 0) * p.quantity, 0);
     return assetsTotal + portfolioTotal;
   },
 
   totalLiabilities(profile: UserProfile): number {
-    return profile.loans.reduce((sum, l) => sum + (l.amount || 0), 0);
+    return (profile.loans || []).reduce((sum, l) => sum + (l.amount || 0), 0);
   },
 
   totalEMI(profile: UserProfile): number {
-    return profile.loans.reduce((sum, l) => sum + (l.emi || 0), 0);
+    return (profile.loans || []).reduce((sum, l) => sum + (l.emi || 0), 0);
   },
 
   totalIncome(profile: UserProfile): number {
-    return profile.income.reduce((sum, i) => sum + (i.value || 0), 0);
+    return (profile.income || []).reduce((sum, i) => sum + (i.value || 0), 0);
   },
 
   totalExpenses(profile: UserProfile): number {
-    const defaultExpenses = profile.expenses.reduce((sum, e) => sum + (e.value || 0), 0);
-    const subscriptionExpenses = profile.subscriptions.reduce((sum, s) => {
+    const defaultExpenses = (profile.expenses || []).reduce((sum, e) => sum + (e.value || 0), 0);
+    const subscriptionExpenses = (profile.subscriptions || []).reduce((sum, s) => {
       let monthly = s.cost;
       if (s.billingCycle === 'yearly') monthly /= 12;
       return sum + (monthly || 0);
@@ -58,7 +58,7 @@ export const finance = {
   emergencyFundRunwayMonths(profile: UserProfile): number {
     const monthlyBurnRate = this.totalExpenses(profile) + this.totalEMI(profile);
     if (!monthlyBurnRate) return 0;
-    const liquidCash = profile.assets.filter(a => a.type === 'cash').reduce((sum, a) => sum + a.value, 0);
+    const liquidCash = (profile.assets || []).filter(a => a.type === 'cash').reduce((sum, a) => sum + a.value, 0);
     return liquidCash / monthlyBurnRate;
   },
 
@@ -88,13 +88,13 @@ export const finance = {
     else if (eFund >= 1) score += 5;
 
     // 4. Investment Consistency (Max 15 points)
-    const portfolioTotal = profile.portfolio.reduce((sum, p) => sum + (p.marketValue || p.currentPrice || p.averageBuyPrice || 0) * p.quantity, 0);
+    const portfolioTotal = (profile.portfolio || []).reduce((sum, p) => sum + (p.marketValue || p.currentPrice || p.averageBuyPrice || 0) * p.quantity, 0);
     if (portfolioTotal > income * 12) score += 15;
     else if (portfolioTotal > income * 6) score += 10;
     else if (portfolioTotal > income) score += 5;
 
     // 5. Goal Progress (Max 15 points)
-    if (profile.goals.length > 0) {
+    if (profile.goals && profile.goals.length > 0) {
       const avgProgress = profile.goals.reduce((acc, g) => acc + (g.target > 0 ? Math.min(1, g.saved / g.target) : 0), 0) / profile.goals.length;
       if (avgProgress >= 0.8) score += 15;
       else if (avgProgress >= 0.5) score += 10;
@@ -108,8 +108,8 @@ export const finance = {
     else if (expenseRatio <= 0.85) score += 3;
 
     // 7. Diversification (Max 5 points)
-    const assetTypes = new Set(profile.assets.map(a => a.type));
-    profile.portfolio.forEach(p => assetTypes.add(p.assetType));
+    const assetTypes = new Set<string>((profile.assets || []).map(a => a.type));
+    (profile.portfolio || []).forEach(p => assetTypes.add(p.assetType));
     
     if (assetTypes.size >= 4) score += 5;
     else if (assetTypes.size >= 2) score += 3;
@@ -166,20 +166,20 @@ export const finance = {
     if (mDTI > 0.4) insights.push({ id: 'debt_high', type: 'warning', title: 'High Debt Burden', description: `Your EMI commitments take up ${(mDTI*100).toFixed(1)}% of your monthly income. Aim to bring this below 35% to reduce financial stress.`, priority: 'high' });
     if (rw < 3 && income > 0) insights.push({ id: 'ef_low', type: 'opportunity', title: 'Emergency Fund Risk', description: `You have less than 3 months of runway. Build up 6 months of expenses (${fmt(expenses * 6)}) in a liquid account.`, priority: 'high' });
     
-    const collateral = profile.assets.find(a => a.type === 'property' && a.mortgageable);
-    const highDebt = [...profile.loans].sort((a, b) => b.rate - a.rate)[0];
-    if (collateral && profile.loans.length > 0 && highDebt && highDebt.rate > 11) {
+    const collateral = (profile.assets || []).find(a => a.type === 'property' && a.mortgageable);
+    const highDebt = [...(profile.loans || [])].sort((a, b) => b.rate - a.rate)[0];
+    if (collateral && (profile.loans || []).length > 0 && highDebt && highDebt.rate > 11) {
         insights.push({ id: 'lap_opportunity', type: 'recommendation', title: 'Refinance Debt', description: `Your ${collateral.name} can be used for a Loan Against Property at 8–10%, which is cheaper than your ${highDebt.rate}% loan. This could save you significant interest.`, priority: 'medium' });
     }
     
     if (this.netWorth(profile) < 0) insights.push({ id: 'nw_negative', type: 'warning', title: 'Negative Net Worth', description: 'Your debts exceed your assets. Focus heavily on debt reduction and avoid taking on new loans.', priority: 'high' });
     
-    const subExpenses = profile.subscriptions.reduce((s, sub) => s + (sub.billingCycle === 'yearly' ? sub.cost / 12 : sub.cost), 0);
+    const subExpenses = (profile.subscriptions || []).reduce((s, sub) => s + (sub.billingCycle === 'yearly' ? sub.cost / 12 : sub.cost), 0);
     if(subExpenses > income * 0.05 && income > 0) {
         insights.push({ id: 'sub_warning', type: 'anomaly', title: 'High Subscription Costs', description: `You are spending ${fmt(subExpenses)} monthly on subscriptions, which is >5% of your income. Review your active subscriptions.`, priority: 'medium' });
     }
 
-    if (!profile.personal.riskProfile && income > 0) insights.push({ id: 'risk_missing', type: 'recommendation', title: 'Investment Strategy', description: 'Tell me your risk appetite (conservative / moderate / aggressive) so I can tailor investment advice.', priority: 'low' });
+    if (!profile.personal?.riskProfile && income > 0) insights.push({ id: 'risk_missing', type: 'recommendation', title: 'Investment Strategy', description: 'Tell me your risk appetite (conservative / moderate / aggressive) so I can tailor investment advice.', priority: 'low' });
 
     return insights;
   },
@@ -196,10 +196,12 @@ export const finance = {
       profile.insights = this.generateInsights(profile);
       
       // Update goal probabilities and monthly needed
-      profile.goals.forEach(goal => {
-          goal.monthlyNeeded = this.goalMonthlyNeeded(goal);
-          goal.probabilityOfSuccess = this.goalProbabilityOfSuccess(goal, profile);
-      });
+      if (profile.goals) {
+          profile.goals.forEach(goal => {
+              goal.monthlyNeeded = this.goalMonthlyNeeded(goal);
+              goal.probabilityOfSuccess = this.goalProbabilityOfSuccess(goal, profile);
+          });
+      }
   }
 };
 

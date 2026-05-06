@@ -1,10 +1,14 @@
 import React, { useState } from 'react';
-import { FinancialSource, UserProfile } from '../types';
+
+export interface FinancialSourceItem {
+  name: string;
+  value: number;
+}
 
 interface FinancialSourceEditorProps {
   title: string;
-  sources: FinancialSource[];
-  onUpdate: (newSources: FinancialSource[]) => void;
+  sources: FinancialSourceItem[];
+  onUpdate: (newSources: FinancialSourceItem[]) => void;
   type: 'income' | 'expense';
 }
 

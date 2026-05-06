@@ -8,8 +8,8 @@ export const insights = {
   async generateResponse(userMsg: string, parsedData: any, profile: UserProfile, chatHistory: { role: string; content: string }[], onboardingStep?: number, onboardingQuestions?: string[]): Promise<string> {
     const fhsScore = profile.metrics.financialHealthScore || 0;
     const fhsInfo = finance.fhsLabel(fhsScore);
-    const collateral = profile.assets.find(a => a.type === 'property' && a.mortgageable);
-    const highDebt = [...profile.loans].sort((a, b) => b.rate - a.rate)[0];
+    const collateral = (profile.assets || []).find(a => a.type === 'property' && a.mortgageable);
+    const highDebt = [...(profile.loans || [])].sort((a, b) => b.rate - a.rate)[0];
 
     const fmt = (n: number) => `₹${n.toLocaleString('en-IN')}`;
 
@@ -45,9 +45,9 @@ METRICS (Total/Monthly balances processed by calculation engine):
 Monthly Income: ${fmt(finance.totalIncome(profile))}
 Monthly Expenses: ${fmt(finance.totalExpenses(profile))} (including subscriptions)
 EMI: ${fmt(finance.totalEMI(profile))}
-Total Loans: ${fmt(finance.totalLiabilities(profile))} ${profile.loans.length > 0 ? '(' + profile.loans.map(l => l.name + ' at ' + l.rate + '%').join(', ') + ')' : ''}
+Total Loans: ${fmt(finance.totalLiabilities(profile))} ${(profile.loans || []).length > 0 ? '(' + (profile.loans || []).map(l => l.name + ' at ' + l.rate + '%').join(', ') + ')' : ''}
 Total Assets: ${fmt(finance.totalAssets(profile))}
-Goals: ${profile.goals.map(g => `${g.name}: ${fmt(g.saved)} / ${fmt(g.target)} (prob: ${(g.probabilityOfSuccess||0)*100}%)`).join(', ') || 'None set'}
+Goals: ${(profile.goals || []).map(g => `${g.name}: ${fmt(g.saved)} / ${fmt(g.target)} (prob: ${(g.probabilityOfSuccess||0)*100}%)`).join(', ') || 'None set'}
 
 ADVANCED METRICS:
 Net worth: ${fmt(profile.metrics.netWorth)}
@@ -57,7 +57,7 @@ Emergency Runway: ${profile.metrics.emergencyFundRunwayMonths.toFixed(1)} months
 Financial Health Score: ${fhsScore > 0 ? fhsScore + '/100 (' + fhsInfo.label + ')' : 'Not enough data yet'}
 
 SYSTEM INSIGHTS (Address the HIGH priority ones if relevant):
-${profile.insights.map(i => `[${i.priority.toUpperCase()}] ${i.title}: ${i.description}`).join('\n')}
+${(profile.insights || []).map(i => `[${i.priority.toUpperCase()}] ${i.title}: ${i.description}`).join('\n')}
 
 EXTRACTED IN THIS TURN: ${parsedData.updates.length > 0 ? parsedData.updates.join(', ') : 'No new hard data found.'}
 

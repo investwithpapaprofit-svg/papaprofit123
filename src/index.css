@@ -1,1 +1,144 @@
 @import "tailwindcss";
+
+body {
+  @apply bg-gray-50 m-0 font-sans text-gray-900;
+}
+
+#appShell {
+  @apply flex flex-col h-screen overflow-hidden;
+}
+
+.topbar {
+  @apply flex justify-between items-center h-[62px] px-6 bg-white border-b border-gray-200 shrink-0 z-10;
+}
+
+.topbar-right {
+  @apply flex items-center gap-4;
+}
+
+.topbar-logo {
+  @apply font-bold text-xl text-[#1a7a4a];
+}
+
+.fhs-badge {
+  @apply flex items-center gap-2 px-3 py-1.5 rounded-full bg-gray-100 hover:bg-gray-200 cursor-pointer transition text-sm text-gray-700;
+}
+.fhs-dot {
+  @apply w-2.5 h-2.5 rounded-full;
+}
+
+.topbar-user {
+  @apply flex items-center gap-3 text-sm font-medium text-gray-700;
+}
+.avatar {
+  @apply w-8 h-8 rounded-full bg-gray-900 font-bold text-white flex items-center justify-center;
+}
+
+.app-layout {
+  @apply flex flex-1 overflow-hidden;
+}
+
+.sidebar {
+  @apply hidden md:flex flex-col w-80 bg-white border-r border-gray-200 overflow-y-auto shrink-0;
+}
+
+.sidebar-section {
+  @apply p-6 border-b border-gray-100 flex flex-col gap-3;
+}
+
+.sidebar-title {
+  @apply text-xs font-bold text-gray-500 uppercase tracking-wider mb-2;
+}
+
+.fhs-circle-wrap {
+  @apply flex flex-col items-center gap-2;
+}
+
+.fhs-circle {
+  @apply w-32 h-32 rounded-full flex flex-col items-center justify-center border-8 border-gray-100;
+}
+.fhs-circle.good { @apply border-[#1a7a4a]; }
+.fhs-circle.ok { @apply border-[#d4851a]; }
+.fhs-circle.poor { @apply border-[#c0392b]; }
+
+.fhs-num { @apply text-4xl font-bold text-gray-900; }
+.fhs-label { @apply text-xs text-gray-500 font-medium; }
+.fhs-desc { @apply text-sm text-center font-medium text-gray-700 mt-2; }
+
+/* Metrics */
+.metric-card { @apply flex items-center justify-between pb-2 mb-2 border-b border-gray-100 last:border-0 last:mb-0 last:pb-0; }
+.metric-label { @apply text-sm text-gray-600; }
+.metric-value { @apply text-sm font-bold text-gray-900; }
+.metric-value.green { @apply text-[#1a7a4a]; }
+.metric-value.red { @apply text-[#c0392b]; }
+.metric-value.amber { @apply text-[#d4851a]; }
+
+/* Goals */
+.goal-card { @apply mb-4 last:mb-0; }
+.goal-name { @apply text-sm font-semibold text-gray-800 mb-1.5; }
+.goal-progress { @apply h-1.5 w-full bg-gray-100 rounded-full overflow-hidden mb-1.5; }
+.goal-progress-fill { @apply h-full bg-[#1a7a4a] transition-all duration-500; }
+.goal-detail { @apply text-[11px] text-gray-500 font-medium; }
+
+/* Insights */
+.nudge { @apply flex items-start gap-2 p-3 bg-[#f8faf8] border border-[#e8f0e8] rounded-xl text-sm text-gray-700 font-medium mb-3 last:mb-0 leading-relaxed; }
+.nudge-icon { @apply text-lg shrink-0; }
+
+.premium-lock { @apply p-6 mt-auto text-center border-t border-gray-100; }
+.premium-lock p { @apply text-xs text-gray-500 mb-3 font-medium; }
+.premium-btn { @apply w-full py-2 bg-gray-900 text-white text-sm font-semibold rounded-xl hover:bg-gray-800 transition shadow-sm; }
+
+/* Chat Area */
+.chat-area { @apply flex-1 flex flex-col h-full bg-[#f4f6f4] relative; }
+.chat-header { @apply p-6 bg-white border-b border-gray-200 shadow-sm shrink-0 hidden md:block; }
+.chat-header h2 { @apply text-xl font-bold text-gray-900 mb-1; }
+.chat-header p { @apply text-sm text-gray-500; }
+
+.chat-messages { @apply flex-1 p-4 md:p-6 overflow-y-auto flex flex-col gap-6; }
+.msg { @apply flex items-end gap-3 max-w-[90%] md:max-w-[75%]; }
+.msg.user { @apply self-end flex-row-reverse; }
+.msg.ai { @apply self-start; }
+
+.msg-avatar { @apply w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center shrink-0 font-bold text-xs text-gray-600; }
+.msg.user .msg-avatar { @apply bg-[#1a7a4a] text-white; }
+.msg.ai .msg-avatar { @apply bg-white border border-gray-200 text-gray-800; }
+
+.msg-bubble { @apply p-4 rounded-2xl shadow-sm text-[15px] leading-relaxed; }
+.msg.user .msg-bubble { @apply bg-[#1a7a4a] text-white rounded-br-sm; }
+.msg.ai .msg-bubble { @apply bg-white text-gray-800 border border-gray-100 rounded-bl-sm; }
+
+.profile-update { @apply text-xs font-semibold px-2.5 py-1 bg-[#e8f5ee] text-[#1a7a4a] rounded-md mt-3 inline-flex items-center gap-1 border border-[#cbebdd]; }
+
+.chat-input-wrap { @apply p-4 bg-white border-t border-gray-200 shrink-0 sticky bottom-0; }
+.chat-input-row { @apply flex gap-3; }
+.chat-input-row input { @apply flex-1 px-4 py-3 bg-gray-100 border-none rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1a7a4a]/30 text-[15px] transition-shadow; }
+.chat-input-row .send-btn { @apply w-12 h-12 bg-[#1a7a4a] text-white rounded-xl flex items-center justify-center text-lg hover:bg-[#145c37] transition shadow-sm disabled:opacity-50 disabled:cursor-not-allowed; }
+
+.suggestions { @apply flex flex-wrap gap-2 px-4 md:px-6 py-2 overflow-x-auto pb-4; }
+.sug { @apply px-3 py-1.5 bg-white border border-gray-200 text-xs text-gray-600 rounded-full cursor-pointer hover:bg-gray-50 hover:border-gray-300 transition-colors shadow-sm whitespace-nowrap; }
+
+/* Profile Panel Details */
+#profilePanel { @apply absolute top-0 right-0 h-full w-[400px] max-w-full bg-white border-l border-gray-200 shadow-2xl z-40 overflow-y-auto p-6 flex flex-col gap-6; }
+#profilePanel h3 { @apply text-lg font-bold text-gray-900 border-b border-gray-100 pb-4 mb-4 flex justify-between items-center; }
+.close-btn { @apply w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500 transition; }
+
+.profile-section { @apply mb-6 last:mb-0; }
+.profile-section h4 { @apply text-sm font-bold tracking-wide uppercase text-gray-400 mb-3; }
+.profile-row { @apply flex justify-between items-start py-2.5 border-b border-gray-50 last:border-0 last:pb-0 gap-4; }
+.profile-row .key { @apply text-[13px] font-medium text-gray-600; }
+.profile-row .val { @apply text-[14px] font-bold text-gray-900 text-right; }
+
+.typing-dots { @apply flex gap-1 px-2 py-1; }
+.typing-dots span { @apply w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce; }
+.typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+.typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+/* Login */
+#loginScreen { @apply flex min-h-[100dvh] bg-gray-50 items-center justify-center p-4 relative overflow-hidden; }
+.logo-wrap { @apply absolute top-8 left-8 hidden md:block; }
+.logo-wrap h1 { @apply text-2xl font-bold tracking-tight text-gray-900; }
+.logo-wrap p { @apply text-sm text-gray-500 mt-1; }
+.login-card { @apply bg-white p-8 rounded-2xl shadow-xl max-w-md w-full border border-gray-100 md:mt-0 mt-8; }
+.login-card h2 { @apply text-2xl font-bold text-gray-900 mb-2; }
+.login-card p { @apply text-sm text-gray-500 mb-8; }
+.google-btn { @apply flex items-center justify-center gap-3 w-full py-3 px-4 border border-gray-200 rounded-xl font-medium text-gray-700 bg-white hover:bg-gray-50 transition shadow-sm; }

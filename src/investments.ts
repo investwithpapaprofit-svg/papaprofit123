@@ -15,7 +15,7 @@ export const investments = {
     const emergencyNeeded = monthlyExpenses * 6;
     
     // Find liquid cash equivalents
-    const cashValue = profile.assets.filter(a => a.type === 'cash').reduce((acc, curr) => acc + curr.value, 0);
+    const cashValue = (profile.assets || []).filter(a => a.type === 'cash').reduce((acc, curr) => acc + curr.value, 0);
     const hasEmergencyFund = cashValue >= emergencyNeeded;
 
     // 1. Foundation
@@ -31,9 +31,9 @@ export const investments = {
     // 2. Risk Profile & Asset Allocation
     const totalAssets = finance.totalAssets(profile);
     
-    const propertyValue = profile.assets.filter(a => a.type === 'property').reduce((s, a) => s + a.value, 0);
-    const goldValue = profile.assets.filter(a => a.type === 'gold').reduce((s, a) => s + a.value, 0);
-    const stocksValue = profile.portfolio?.filter(h => h.assetType === 'stock' || h.assetType === 'mutualFund' || h.assetType === 'etf').reduce((s, a) => s + ((a.currentPrice || a.averageBuyPrice) * a.quantity), 0) || 0;
+    const propertyValue = (profile.assets || []).filter(a => a.type === 'property').reduce((s, a) => s + a.value, 0);
+    const goldValue = (profile.assets || []).filter(a => a.type === 'gold').reduce((s, a) => s + a.value, 0);
+    const stocksValue = profile.portfolio?.filter(h => h.assetType === 'stock' || h.assetType === 'mutual_fund' || h.assetType === 'etf').reduce((s, a) => s + ((a.currentPrice || a.averageBuyPrice) * a.quantity), 0) || 0;
     const cryptoValue = profile.portfolio?.filter(h => h.assetType === 'crypto').reduce((s, a) => s + ((a.currentPrice || a.averageBuyPrice) * a.quantity), 0) || 0;
 
     const propertyPct = totalAssets > 0 ? (propertyValue / totalAssets) * 100 : 0;
@@ -60,10 +60,9 @@ export const investments = {
     }
 
     // 3. Goal-Based Advice
-    if (profile.goals.length > 0) {
+    if (profile.goals && profile.goals.length > 0) {
       profile.goals.forEach(goal => {
-        // basic assumption if we only have targetDate
-        const months = goal.targetDate ? Math.max(1, Math.ceil((new Date(goal.targetDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24 * 30))) : 0;
+        const months = goal.months || 0;
         
         if (months > 0 && months <= 12) {
           recommendations.push(`**Goal '${goal.name}' (Short-term):** Since this goal is less than a year away, keep the funds in safe, liquid instruments like FDs or liquid funds. Avoid stocks.`);
@@ -76,7 +75,7 @@ export const investments = {
     }
 
     // 4. Tax Saving (Generic Indian context)
-    if (monthlyIncome * 12 > 1000000 && !profile.assets.find(a => a.name.toLowerCase().includes('ppf') || a.name.toLowerCase().includes('elss'))) {
+    if (monthlyIncome * 12 > 1000000 && !(profile.assets || []).find(a => a.name.toLowerCase().includes('ppf') || a.name.toLowerCase().includes('elss'))) {
       recommendations.push(`**Tax Optimization:** With your income level, ensure you are maximizing your ₹1.5L Section 80C limit using ELSS (for growth) or PPF (for safety).`);
     }
 

@@ -408,10 +408,10 @@ export default function App() {
             </div>
           </div>
 
-          {profile.goals.length > 0 && (
+          {(profile.goals || []).length > 0 && (
             <div className="sidebar-section">
               <div className="sidebar-title">Goals</div>
-              {profile.goals.map((g, i) => {
+              {(profile.goals || []).map((g, i) => {
                 const monthly = finance.goalMonthlyNeeded(g);
                 const pct = g.target > 0 ? Math.round((g.saved / g.target) * 100) : 0;
                 return (
@@ -554,8 +554,8 @@ export default function App() {
             </div>
             <div className="profile-section">
               <h4>Goals</h4>
-              {profile.goals.map((g, i) => <div key={i} className="profile-row"><span className="key">{g.name}</span><span className="val">{g.target > 0 ? fmt(g.target) : 'No target set'}</span></div>)}
-              {profile.goals.length === 0 && <div className="profile-row"><span className="key" style={{ color: '#ccc' }}>No goals yet</span></div>}
+              {(profile.goals || []).map((g, i) => <div key={i} className="profile-row"><span className="key">{g.name}</span><span className="val">{g.target > 0 ? fmt(g.target) : 'No target set'}</span></div>)}
+              {(profile.goals || []).length === 0 && <div className="profile-row"><span className="key" style={{ color: '#ccc' }}>No goals yet</span></div>}
             </div>
             <div className="profile-section">
               <h4>Risk Profile</h4>

@@ -17,19 +17,16 @@ export function Dashboard({ profile }: DashboardProps) {
   const surplus = profile.metrics.monthlyCashFlow;
   
   // Data for Net Worth history if available
-  const historyData = profile.history?.slice(-6).map(h => ({
-    name: new Date(h.timestamp).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' }),
-    netWorth: h.metricsSnapshot.netWorth
-  })) || [{ name: 'Today', netWorth: nw }];
+  const historyData = [{ name: 'Today', netWorth: nw }];
 
   // Prepare Asset Allocation Data
   const assetData = [];
-  const propertyVal = profile.assets.filter(a => a.type === 'property').reduce((s, a) => s + a.value, 0);
-  const goldVal = profile.assets.filter(a => a.type === 'gold').reduce((s, a) => s + a.value, 0);
-  const cashVal = profile.assets.filter(a => a.type === 'cash').reduce((s, a) => s + a.value, 0);
-  const stockVal = profile.portfolio.filter(p => p.assetType === 'stock' || p.assetType === 'mutualFund' || p.assetType === 'etf')
+  const propertyVal = (profile.assets || []).filter(a => a.type === 'property').reduce((s, a) => s + a.value, 0);
+  const goldVal = (profile.assets || []).filter(a => a.type === 'gold').reduce((s, a) => s + a.value, 0);
+  const cashVal = (profile.assets || []).filter(a => a.type === 'cash').reduce((s, a) => s + a.value, 0);
+  const stockVal = (profile.portfolio || []).filter(p => p.assetType === 'stock' || p.assetType === 'mutual_fund' || p.assetType === 'etf')
                     .reduce((s, a) => s + ((a.currentPrice || a.averageBuyPrice) * a.quantity), 0);
-  const cryptoVal = profile.portfolio.filter(p => p.assetType === 'crypto')
+  const cryptoVal = (profile.portfolio || []).filter(p => p.assetType === 'crypto')
                     .reduce((s, a) => s + ((a.currentPrice || a.averageBuyPrice) * a.quantity), 0);
 
   if (propertyVal > 0) assetData.push({ name: 'Real Estate', value: propertyVal });
@@ -111,7 +108,7 @@ export function Dashboard({ profile }: DashboardProps) {
         </div>
       )}
 
-      {profile.goals.length > 0 && (
+      {profile.goals && profile.goals.length > 0 && (
         <div className="mt-4 border-t border-gray-100 pt-6">
           <h4 className="text-sm font-semibold text-gray-700 mb-4">Goals Progress</h4>
           <div className="space-y-4">
