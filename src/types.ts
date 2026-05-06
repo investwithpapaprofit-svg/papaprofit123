@@ -1,64 +1,110 @@
-export interface Loan {
+export interface Subscription {
   name: string;
-  amount: number;
-  rate: number;
-  emi: number;
+  cost: number;
+  billingCycle: 'monthly' | 'yearly';
 }
 
-export interface Asset {
+export interface IncomeSource {
   name: string;
-  value: number;
-  mortgageable?: boolean;
+  value: number; // Monthly
 }
 
-export interface Goal {
+export interface Expense {
+  name: string;
+  value: number; // Monthly
+  category?: string;
+}
+
+export interface HistoricalEvent {
+  date: string;
+  type: string;
+  description: string;
+  amount?: number;
+}
+
+export interface Holding {
+  symbol: string;
+  name: string;
+  assetType: 'stock' | 'etf' | 'mutual_fund' | 'crypto' | 'bond' | 'other';
+  quantity: number;
+  averageBuyPrice: number;
+  currentPrice?: number;
+  marketValue?: number;
+  unrealizedGainLoss?: number;
+  allocation?: number;
+}
+
+export interface FinancialMetrics {
+  netWorth: number;
+  monthlyCashFlow: number;
+  savingsRate: number;
+  debtToIncomeRatio: number;
+  emergencyFundRunwayMonths: number;
+  financialHealthScore: number;
+}
+
+export interface Insight {
+  id: string;
+  type: 'anomaly' | 'trend' | 'opportunity' | 'warning' | 'recommendation';
+  title: string;
+  description: string;
+  priority: 'high' | 'medium' | 'low';
+}
+
+export interface FinancialGoal {
   name: string;
   target: number;
   saved: number;
   months: number;
+  type?: 'emergency' | 'vacation' | 'vehicle' | 'home' | 'education' | 'retirement' | 'debt' | 'custom';
+  monthlyNeeded?: number;
+  probabilityOfSuccess?: number;
 }
 
-export interface Stock {
-  symbol: string;
+export interface Loan {
   name: string;
-  quantity: number;
-  buyPrice: number;
-  currentPrice?: number;
+  amount: number; // Total outstanding
+  rate: number;
+  emi: number; // Monthly
 }
 
-export interface FinancialSource {
+export interface Asset {
   name: string;
+  type: 'property' | 'gold' | 'cash' | 'vehicle' | 'other';
   value: number;
+  mortgageable?: boolean;
+}
+
+export interface UserPreferences {
+  currency: string;
 }
 
 export interface UserProfile {
-  income: number;
-  incomeSources: FinancialSource[];
-  expenses: number;
-  expenseCategories: FinancialSource[];
-  savings: number;
-  loans: Loan[];
-  assets: {
-    property: Asset[];
-    gold: number;
-    cash: number;
-    stocks: Stock[];
-    crypto: Asset[];
-    other: Asset[];
+  personal: {
+    name?: string;
+    age?: number;
+    riskProfile?: 'conservative' | 'moderate' | 'aggressive';
   };
-  subscriptions: any[];
-  goals: Goal[];
-  riskProfile: 'conservative' | 'moderate' | 'aggressive' | null;
+  income: IncomeSource[];
+  expenses: Expense[];
+  loans: Loan[];
+  assets: Asset[];
+  subscriptions: Subscription[];
+  portfolio: Holding[];
+  goals: FinancialGoal[];
+  metrics: FinancialMetrics;
+  insights: Insight[];
+  preferences: UserPreferences;
+  history: HistoricalEvent[];
   isPremium?: boolean;
   onboardingCompleted?: boolean;
   lastUpdated: string | null;
 }
 
 export interface UserDocument {
-  name: string;
+  name?: string;
   email: string;
   createdAt: string;
   profile: UserProfile;
-  portfolio: any[];
   lastUpdated: string;
 }

@@ -2,13 +2,13 @@ import { UserProfile } from './types';
 import { finance } from './finance';
 import { GoogleGenAI } from '@google/genai';
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
+const ai = new GoogleGenAI({ apiKey: process.env.GOOGLE_GENAI_API_KEY || process.env.GEMINI_API_KEY || '' });
 
 export const insights = {
   async generateResponse(userMsg: string, parsedData: any, profile: UserProfile, chatHistory: { role: string; content: string }[], onboardingStep?: number, onboardingQuestions?: string[]): Promise<string> {
-    const fhsScore = finance.fhs(profile);
+    const fhsScore = profile.metrics.financialHealthScore || 0;
     const fhsInfo = finance.fhsLabel(fhsScore);
-    const collateral = profile.assets.property.find(a => a.mortgageable);
+    const collateral = profile.assets.find(a => a.type === 'property' && a.mortgageable);
     const highDebt = [...profile.loans].sort((a, b) => b.rate - a.rate)[0];
 
     const fmt = (n: number) => `₹${n.toLocaleString('en-IN')}`;
@@ -20,43 +20,48 @@ export const insights = {
       : "";
 
     const systemCtx = `You are PapaProfit — a sharp, warm, and direct personal financial advisor for Indian users. 
+    You act as a world-class AI financial copilot.
 
 CRITICAL: 
-- If the user just gave you data (like a salary, loan, or asset), FIRST confirm exactly what you updated in their profile.
+- Proactive, not just reactive. Give insight based on the numbers, do not just parrot data back to them.
+- If the user gave you data, confirm what you updated in their profile, and what the impact is.
 - If they are frustrated or just chatting, be empathetic and conversational.
-- Income/Expenses are MONTHLY. Assets/Loans are TOTAL BALANCES.
 ${onboardingCtx}
 
 FORMATTING RULES:
-- Use clear sections with bold headers like **📊 Your Numbers** 
+- Use clear sections with bold headers like **📊 The Numbers** or **💡 My Thoughts**
 - Use line breaks between sections
-- Use bullet points for lists
 - Keep responses focused — 150 to 250 words
 - Always end with a follow-up question OR a clear next action
 - Use ₹ symbol and Indian number format (lakh, crore)
-- Reference real Indian products: SIP, PPF, NPS, ELSS, LAP, KCC, HDFC/SBI/Bajaj
+- Be hyper-specific and actionable (e.g. "Increase saving by 5000 to reach your goal 3 months faster" instead of "increase savings").
 
-CLIENT PROFILE (always use these numbers):
-Monthly income: ${fmt(profile.income)}
-Monthly expenses: ${fmt(profile.expenses)}
-Savings (Total): ${fmt(profile.savings)}
-Loans (Total): ${profile.loans.map(l => l.name + ': ' + fmt(l.amount) + (l.rate ? ' at ' + l.rate + '%' : '')).join(', ') || 'None'}
-Assets (Total): Property: ${profile.assets.property.map(p => p.name + ' (' + fmt(p.value) + ')').join(', ') || 'None'} | Gold: ${fmt(profile.assets.gold)} | Cash: ${fmt(profile.assets.cash)} | Other: ${profile.assets.other.map(p => p.name + ' (' + fmt(p.value) + ')').join(', ') || 'None'}
-Goals: ${profile.goals.map(g => g.name + (g.target ? ' (' + fmt(g.target) + ')' : '')).join(', ') || 'None set'}
-Risk profile: ${profile.riskProfile || 'Unknown'}
+CLIENT PROFILE:
+Name: ${profile.personal?.name || 'Unknown'}
+Age: ${profile.personal?.age || 'Unknown'}
+Risk Profile: ${profile.personal?.riskProfile || 'Unknown'}
 
-CALCULATED METRICS:
-Net worth (Total): ${fmt(finance.netWorth(profile))}
-Monthly surplus: ${fmt(finance.surplus(profile))}
-Savings rate (Monthly): ${finance.savingsRate(profile).toFixed(1)}%
-Debt ratio: ${finance.debtRatio(profile).toFixed(1)}x monthly income
-Financial Health Score: ${fhsScore !== null ? fhsScore + '/100 (' + fhsInfo.label + ')' : 'Not enough data yet'}
-${collateral ? 'Collateral available: ' + collateral.name + ' worth ' + fmt(collateral.value) : ''}
-${highDebt ? 'Highest interest debt: ' + highDebt.name + ' at ' + highDebt.rate + '%' : ''}
+METRICS (Total/Monthly balances processed by calculation engine):
+Monthly Income: ${fmt(finance.totalIncome(profile))}
+Monthly Expenses: ${fmt(finance.totalExpenses(profile))} (including subscriptions)
+EMI: ${fmt(finance.totalEMI(profile))}
+Total Loans: ${fmt(finance.totalLiabilities(profile))} ${profile.loans.length > 0 ? '(' + profile.loans.map(l => l.name + ' at ' + l.rate + '%').join(', ') + ')' : ''}
+Total Assets: ${fmt(finance.totalAssets(profile))}
+Goals: ${profile.goals.map(g => `${g.name}: ${fmt(g.saved)} / ${fmt(g.target)} (prob: ${(g.probabilityOfSuccess||0)*100}%)`).join(', ') || 'None set'}
 
-UPDATES JUST MADE: ${parsedData.updates.length > 0 ? parsedData.updates.join(', ') : 'none'}
+ADVANCED METRICS:
+Net worth: ${fmt(profile.metrics.netWorth)}
+Monthly surplus: ${fmt(profile.metrics.monthlyCashFlow)}
+Savings rate: ${profile.metrics.savingsRate.toFixed(1)}%
+Emergency Runway: ${profile.metrics.emergencyFundRunwayMonths.toFixed(1)} months
+Financial Health Score: ${fhsScore > 0 ? fhsScore + '/100 (' + fhsInfo.label + ')' : 'Not enough data yet'}
 
-Premium Status: ${profile.isPremium ? 'PRO USER - Give advanced investment and tax advice' : 'FREE USER - Do NOT give specific stock or advanced investment advice. Tell them to upgrade to Pro for personalized investment strategies if they ask.'}`;
+SYSTEM INSIGHTS (Address the HIGH priority ones if relevant):
+${profile.insights.map(i => `[${i.priority.toUpperCase()}] ${i.title}: ${i.description}`).join('\n')}
+
+EXTRACTED IN THIS TURN: ${parsedData.updates.length > 0 ? parsedData.updates.join(', ') : 'No new hard data found.'}
+
+Premium Status: ${profile.isPremium ? 'PRO USER - Give advanced investment, AI portfolio intelligence, and tax advice' : 'FREE USER - Do NOT give specific stock or advanced investment advice. Tell them to upgrade to Pro for personalized investment strategies.'}`;
 
     let messages = chatHistory.slice(-6).map((h: any) => ({
       role: h.role === 'user' ? 'user' : 'model',

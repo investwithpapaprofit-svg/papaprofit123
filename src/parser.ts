@@ -1,34 +1,34 @@
 import { UserProfile } from './types';
 import { GoogleGenAI, Type, Schema } from '@google/genai';
+import { finance } from './finance';
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
+const ai = new GoogleGenAI({ apiKey: process.env.GOOGLE_GENAI_API_KEY || process.env.GEMINI_API_KEY || '' });
 
 export const parser = {
-  async parse(msg: string, currentProfile: UserProfile): Promise<{ intent: string; updates: string[]; amount: number; rate: number; months: number; newProfile: UserProfile }> {
+  async parse(msg: string, currentProfile: UserProfile): Promise<{ intent: string; confidence: number; updates: string[]; newProfile: UserProfile }> {
     const newProfile = JSON.parse(JSON.stringify(currentProfile)) as UserProfile;
     const updates: string[] = [];
     let intent = 'general';
-    let amount = 0;
-    let rate = 0;
-    let months = 0;
+    let confidence = 0.5;
 
     const fmt = (n: number) => `₹${n.toLocaleString('en-IN')}`;
 
     const schema: Schema = {
       type: Type.OBJECT,
       properties: {
-        intent: { type: Type.STRING },
+        intent: { type: Type.STRING, description: "Primary intent: income, expense, asset, loan, goal, portfolio, personal, or general." },
+        confidenceScore: { type: Type.NUMBER, description: "Confidence score from 0.0 to 1.0" },
         extracted_data: {
           type: Type.OBJECT,
           properties: {
+            personal: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, age: { type: Type.NUMBER }, riskProfile: { type: Type.STRING, enum: ['conservative', 'moderate', 'aggressive'] } } },
             incomeSources: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, value: { type: Type.NUMBER } } } },
-            expenseCategories: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, value: { type: Type.NUMBER } } } },
-            savings: { type: Type.NUMBER },
-            loan: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, amount: { type: Type.NUMBER }, rate: { type: Type.NUMBER } } },
-            asset: { type: Type.OBJECT, properties: { type: { type: Type.STRING }, name: { type: Type.STRING }, value: { type: Type.NUMBER } } },
-            stock: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, quantity: { type: Type.NUMBER }, buyPrice: { type: Type.NUMBER }, value: { type: Type.NUMBER } } },
-            goal: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, targetAmount: { type: Type.NUMBER }, months: { type: Type.NUMBER } } },
-            riskProfile: { type: Type.STRING }
+            expenses: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, value: { type: Type.NUMBER }, category: { type: Type.STRING } } } },
+            subscriptions: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, cost: { type: Type.NUMBER }, billingCycle: { type: Type.STRING, enum: ['monthly', 'yearly'] } } } },
+            loans: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, amount: { type: Type.NUMBER }, rate: { type: Type.NUMBER }, emi: { type: Type.NUMBER } } } },
+            assets: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, type: { type: Type.STRING, enum: ['property', 'gold', 'cash', 'vehicle', 'other'] }, value: { type: Type.NUMBER }, mortgageable: { type: Type.BOOLEAN } } } },
+            portfolio: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { symbol: { type: Type.STRING }, name: { type: Type.STRING }, assetType: { type: Type.STRING, enum: ['stock', 'etf', 'mutual_fund', 'crypto', 'bond', 'other'] }, quantity: { type: Type.NUMBER }, averageBuyPrice: { type: Type.NUMBER } } } },
+            goals: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, target: { type: Type.NUMBER }, months: { type: Type.NUMBER }, type: { type: Type.STRING } } } }
           }
         }
       }
@@ -37,20 +37,15 @@ export const parser = {
     try {
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: `You are a financial data extractor. Parse the user message and extract ALL financial entities.
+        contents: `You are an advanced financial data extraction engine. Analyze the user message and extract all explicit and implied financial entities.
         
         RULES:
-        - Income/Expenses are ALWAYS MONTHLY.
-        - Assets/Loans/Savings are ALWAYS TOTAL/CURRENT BALANCE.
-        - Convert 'k' to 1000, 'lakh' to 100000, 'cr' to 10000000.
-        
-        EXTRACT THESE:
-        1. incomeSources: {name, value} (Monthly)
-        2. expenseCategories: {name, value} (Monthly)
-        3. savings: total current balance
-        4. loan: {name, amount, rate} (Total outstanding)
-        5. asset: {type: 'property'|'gold'|'cash'|'other', name, value} (Total current value)
-        6. stock: {name, quantity, buyPrice, value} (Use value if quantity/buyPrice not given)
+        - Income/Expenses are ALWAYS MONTHLY. Average out variable incomes.
+        - Assets/Loans are ALWAYS TOTAL CURRENT BALANCE.
+        - Handle numerical shorthands: 'k' -> 1000, 'lakh' -> 100000, 'cr' -> 10000000.
+        - Detect multiple entities (e.g. "I pay 12k rent and 4k on food" -> two expenses).
+        - Use confidence score to indicate how sure you are about the extracted numbers and intents.
+        - Only output valid JSON matching the schema.
         
         Message: "${msg}"`,
         config: {
@@ -61,132 +56,127 @@ export const parser = {
       });
       const data = JSON.parse(response.text || '{}');
       intent = data.intent || 'general';
+      confidence = data.confidenceScore || 0.5;
       const extracted = data.extracted_data || {};
 
-      if (extracted.incomeSources && extracted.incomeSources.length > 0) {
+      if (extracted.personal) {
+          if(extracted.personal.name) newProfile.personal.name = extracted.personal.name;
+          if(extracted.personal.age) newProfile.personal.age = extracted.personal.age;
+          if(extracted.personal.riskProfile) newProfile.personal.riskProfile = extracted.personal.riskProfile;
+          updates.push("Personal details updated");
+      }
+
+      if (extracted.incomeSources?.length > 0) {
         extracted.incomeSources.forEach((source: any) => {
-          const existing = newProfile.incomeSources.find(s => s.name.toLowerCase() === source.name.toLowerCase());
-          if (existing) {
-            existing.value = source.value;
-          } else {
-            newProfile.incomeSources.push(source);
-          }
-          updates.push(`${source.name} updated to ${fmt(source.value)}`);
+          const existing = newProfile.income.find(s => s.name.toLowerCase() === source.name.toLowerCase());
+          if (existing) existing.value = source.value;
+          else newProfile.income.push(source);
+          updates.push(`Income source '${source.name}' recorded as ${fmt(source.value)}/mo`);
         });
-        newProfile.income = newProfile.incomeSources.reduce((acc, s) => acc + s.value, 0);
       }
 
-      if (extracted.expenseCategories && extracted.expenseCategories.length > 0) {
-        extracted.expenseCategories.forEach((cat: any) => {
-          const existing = newProfile.expenseCategories.find(c => c.name.toLowerCase() === cat.name.toLowerCase());
+      if (extracted.expenses?.length > 0) {
+        extracted.expenses.forEach((expense: any) => {
+          const existing = newProfile.expenses.find(e => e.name.toLowerCase() === expense.name.toLowerCase());
           if (existing) {
-            existing.value = cat.value;
-          } else {
-            newProfile.expenseCategories.push(cat);
+              existing.value = expense.value;
+              if (expense.category) existing.category = expense.category;
           }
-          updates.push(`${cat.name} updated to ${fmt(cat.value)}`);
+          else newProfile.expenses.push(expense);
+          updates.push(`Expense '${expense.name}' recorded as ${fmt(expense.value)}/mo`);
         });
-        newProfile.expenses = newProfile.expenseCategories.reduce((acc, c) => acc + c.value, 0);
       }
-      if (extracted.savings) {
-        newProfile.savings = extracted.savings;
-        amount = extracted.savings;
-        updates.push('savings updated to ' + fmt(extracted.savings));
+
+      if (extracted.subscriptions?.length > 0) {
+          extracted.subscriptions.forEach((sub: any) => {
+             const existing = newProfile.subscriptions.find(s => s.name.toLowerCase() === sub.name.toLowerCase());
+             if (existing) {
+                 existing.cost = sub.cost;
+                 existing.billingCycle = sub.billingCycle;
+             } else newProfile.subscriptions.push(sub);
+             updates.push(`Subscription '${sub.name}' recorded at ${fmt(sub.cost)}/${sub.billingCycle}`);
+          });
       }
-      if (extracted.loan && extracted.loan.amount) {
-        const existing = newProfile.loans.find(l => l.name === extracted.loan.name);
-        if (existing) {
-          existing.amount = extracted.loan.amount;
-          if (extracted.loan.rate) existing.rate = extracted.loan.rate;
-        } else {
-          newProfile.loans.push({ name: extracted.loan.name || 'Loan', amount: extracted.loan.amount, rate: extracted.loan.rate || 0, emi: 0 });
-        }
-        amount = extracted.loan.amount;
-        rate = extracted.loan.rate || 0;
-        updates.push(`${extracted.loan.name || 'Loan'} of ${fmt(extracted.loan.amount)} added`);
+
+      if (extracted.loans?.length > 0) {
+        extracted.loans.forEach((loan: any) => {
+          const existing = newProfile.loans.find(l => l.name.toLowerCase() === loan.name.toLowerCase());
+          if (existing) {
+            if(loan.amount) existing.amount = loan.amount;
+            if(loan.rate) existing.rate = loan.rate;
+            if(loan.emi) existing.emi = loan.emi;
+          } else {
+            newProfile.loans.push({ name: loan.name || 'Debt', amount: loan.amount || 0, rate: loan.rate || 0, emi: loan.emi || 0 });
+          }
+          updates.push(`Loan '${loan.name}' recorded with outstanding ${fmt(loan.amount)}`);
+        });
       }
-      if (extracted.asset && extracted.asset.value) {
-        if (extracted.asset.type === 'property') {
-          newProfile.assets.property.push({ name: extracted.asset.name || 'Property', value: extracted.asset.value, mortgageable: true });
-        } else if (extracted.asset.type === 'gold') {
-          newProfile.assets.gold = extracted.asset.value;
-        } else if (extracted.asset.type === 'cash') {
-          newProfile.assets.cash = (newProfile.assets.cash || 0) + extracted.asset.value;
-        } else {
-          newProfile.assets.other.push({ name: extracted.asset.name || 'Asset', value: extracted.asset.value });
-        }
-        amount = extracted.asset.value;
-        updates.push(`${extracted.asset.name || extracted.asset.type} worth ${fmt(extracted.asset.value)} added`);
+
+      if (extracted.assets?.length > 0) {
+          extracted.assets.forEach((asset: any) => {
+             const existing = newProfile.assets.find(a => a.name.toLowerCase() === asset.name.toLowerCase());
+             if (existing) {
+                 existing.value = asset.value;
+                 if(asset.mortgageable !== undefined) existing.mortgageable = asset.mortgageable;
+             } else {
+                 newProfile.assets.push({ name: asset.name, type: asset.type || 'other', value: asset.value, mortgageable: asset.mortgageable });
+             }
+             updates.push(`Asset '${asset.name}' recorded worth ${fmt(asset.value)}`);
+          });
       }
-      if (extracted.stock && extracted.stock.name) {
-        const qty = extracted.stock.quantity || 1;
-        const price = extracted.stock.buyPrice || extracted.stock.value || 0;
-        
-        if (price > 0) {
-          const newStock = {
-            symbol: extracted.stock.name.toUpperCase(),
-            name: extracted.stock.name,
-            quantity: qty,
-            buyPrice: price,
-            currentPrice: price
-          };
-          if (!newProfile.assets.stocks) newProfile.assets.stocks = [];
-          newProfile.assets.stocks.push(newStock);
-          amount = qty * price;
-          updates.push(`Stock/Investment ${extracted.stock.name} added to portfolio`);
-        }
+
+      if (extracted.portfolio?.length > 0) {
+          extracted.portfolio.forEach((holding: any) => {
+              const existing = newProfile.portfolio.find(p => p.symbol.toLowerCase() === holding.symbol?.toLowerCase() || p.name.toLowerCase() === holding.name.toLowerCase());
+              if (existing) {
+                  existing.quantity = holding.quantity;
+                  existing.averageBuyPrice = holding.averageBuyPrice;
+              } else {
+                  newProfile.portfolio.push({
+                      symbol: holding.symbol || holding.name?.substring(0,4).toUpperCase(),
+                      name: holding.name,
+                      assetType: holding.assetType || 'other',
+                      quantity: holding.quantity || 1,
+                      averageBuyPrice: holding.averageBuyPrice || 0,
+                      currentPrice: holding.averageBuyPrice || 0
+                  });
+              }
+              updates.push(`Portfolio updated with ${holding.quantity}x ${holding.name}`);
+          });
       }
-      if (extracted.goal && extracted.goal.name) {
-        const existing = newProfile.goals.find(g => g.name === extracted.goal.name);
-        if (!existing) {
-          newProfile.goals.push({ name: extracted.goal.name, target: extracted.goal.targetAmount || 0, saved: 0, months: extracted.goal.months || 60 });
-          updates.push('Goal added: ' + extracted.goal.name);
-        }
-        amount = extracted.goal.targetAmount || 0;
-        months = extracted.goal.months || 0;
-      }
-      if (extracted.riskProfile) {
-        newProfile.riskProfile = extracted.riskProfile as 'conservative' | 'moderate' | 'aggressive';
-        updates.push(`Risk profile: ${extracted.riskProfile}`);
-      }
-    } catch (e) {
-      console.error("Server parsing failed, using regex fallback", e);
       
-      // Basic Regex Fallback for common patterns
-      const parseNum = (s: string) => {
-        const n = parseFloat(s.replace(/,/g, ''));
-        if (s.toLowerCase().includes('k')) return n * 1000;
-        if (s.toLowerCase().includes('lakh')) return n * 100000;
-        if (s.toLowerCase().includes('cr')) return n * 10000000;
-        return n;
-      };
-
-      const incomeMatch = msg.match(/(?:income|salary|earn|earning)s?\s*(?:is|of|:)?\s*₹?\s*([\d,.]+\s*(?:k|lakh|cr)?)/i);
-      if (incomeMatch) {
-        const val = parseNum(incomeMatch[1]);
-        newProfile.income = val;
-        updates.push('income updated to ' + fmt(val));
-        intent = 'income';
+      if (extracted.goals?.length > 0) {
+          extracted.goals.forEach((goal: any) => {
+             const existing = newProfile.goals.find(g => g.name.toLowerCase() === goal.name.toLowerCase());
+             if (existing) {
+                 if (goal.target) existing.target = goal.target;
+                 if (goal.months) existing.months = goal.months;
+             } else {
+                 newProfile.goals.push({
+                     name: goal.name, target: goal.target, months: goal.months || 60, saved: 0, type: goal.type || 'custom'
+                 });
+             }
+             updates.push(`Goal '${goal.name}' set for ${fmt(goal.target)}`);
+          });
       }
 
-      const expenseMatch = msg.match(/(?:expense|spend|spending|cost)s?\s*(?:is|of|:)?\s*₹?\s*([\d,.]+\s*(?:k|lakh|cr)?)/i);
-      if (expenseMatch) {
-        const val = parseNum(expenseMatch[1]);
-        newProfile.expenses = val;
-        updates.push('expenses updated to ' + fmt(val));
-        intent = 'expense';
-      }
+    } catch (e) {
+      console.error("Server parsing failed", e);
+      intent = 'general';
+    }
 
-      const savingsMatch = msg.match(/(?:savings?|saved|bank balance)\s*(?:is|of|:)?\s*₹?\s*([\d,.]+\s*(?:k|lakh|cr)?)/i);
-      if (savingsMatch) {
-        const val = parseNum(savingsMatch[1]);
-        newProfile.savings = val;
-        updates.push('savings updated to ' + fmt(val));
-        intent = 'savings';
-      }
+    finance.recalculateMetrics(newProfile);
+    
+    // Log history
+    if (updates.length > 0) {
+        newProfile.history.push({
+            date: new Date().toISOString(),
+            type: 'system_update',
+            description: `Extracted data from message: ${msg.substring(0, 50)}...`,
+        });
     }
 
     newProfile.lastUpdated = new Date().toISOString();
-    return { intent, updates, amount, rate, months, newProfile };
+    return { intent, confidence, updates, newProfile };
   }
 };
