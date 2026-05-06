@@ -87,7 +87,33 @@ Premium Status: ${profile.isPremium ? 'PRO USER - Give advanced investment, AI p
           maxOutputTokens: 600
         }
       });
-      return response.text || 'Sorry, I had trouble with that. Please try again.';
+      
+      let finalResponse = response.text || 'Sorry, I had trouble with that. Please try again.';
+      
+      // Memory Engine & Report Injection (Deterministic)
+      const changes = finance.compareWithLast(profile);
+      const action = finance.getNextBestAction(profile.insights || []);
+      let report = '';
+      
+      // Note: We'll show the report roughly every 5th snapshot. For now, since user wants it visible, we'll check if it's the 5th message in history or similar.
+      if (profile.history && profile.history.length > 2 && (profile.history.length % 5 === 0 || userMsg.toLowerCase().includes('report'))) {
+         report = finance.generateWeeklyReport(profile);
+      }
+      
+      const attachments = [];
+      if (changes.length > 0) {
+          attachments.push(`📈 **Trend Update**\n${changes.join('\n')}`);
+      }
+      attachments.push(`🎯 **${action}**`);
+      if (report && !report.includes('Not enough data')) {
+          attachments.push(report);
+      }
+      
+      if (attachments.length > 0) {
+          finalResponse += '\n\n---\n\n' + attachments.join('\n\n');
+      }
+      
+      return finalResponse;
     } catch (error) {
       console.error('AI Insights error:', error);
       return 'Sorry, I had trouble connecting to my brain. Please try again.';

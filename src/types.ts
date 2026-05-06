@@ -43,6 +43,9 @@ export interface FinancialMetrics {
   debtToIncomeRatio: number;
   emergencyFundRunwayMonths: number;
   financialHealthScore: number;
+  totalIncome?: number;
+  totalExpenses?: number;
+  totalLiabilities?: number;
 }
 
 export interface Insight {

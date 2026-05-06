@@ -214,6 +214,50 @@ export const finance = {
      return "Maintain your current financial habits and keep investing!";
   },
 
+  compareWithLast(profile: UserProfile): string[] {
+    if (!profile.history || profile.history.length < 2) return [];
+
+    // The most recent snapshot is history[length-1], previous is history[length-2]
+    const last = profile.history[profile.history.length - 2].metricsSnapshot;
+    const current = profile.history[profile.history.length - 1].metricsSnapshot;
+    
+    if (!last || !current) return [];
+
+    const changes = [];
+
+    if (last.totalExpenses !== undefined && current.totalExpenses !== undefined && last.totalExpenses > 0) {
+      const diff = ((current.totalExpenses - last.totalExpenses) / last.totalExpenses) * 100;
+      if (Math.abs(diff) > 5) {
+        changes.push(`Your expenses changed by ${diff > 0 ? '+' : ''}${diff.toFixed(1)}%`);
+      }
+    }
+
+    if (last.totalIncome !== undefined && current.totalIncome !== undefined && last.totalIncome > 0) {
+      const diff = ((current.totalIncome - last.totalIncome) / last.totalIncome) * 100;
+      if (Math.abs(diff) > 5) {
+        changes.push(`Your income changed by ${diff > 0 ? '+' : ''}${diff.toFixed(1)}%`);
+      }
+    }
+
+    return changes;
+  },
+
+  generateWeeklyReport(profile: UserProfile): string {
+    if (!profile.history || profile.history.length < 2) {
+      return "Not enough data for a weekly report yet.";
+    }
+
+    const first = profile.history[0].metricsSnapshot;
+    const last = profile.metrics;
+
+    if (!first || !last) return "Not enough metrics for a report.";
+
+    const netWorthChange = last.netWorth - first.netWorth;
+    const fhsChange = last.financialHealthScore - first.financialHealthScore;
+
+    return `Weekly Report:\n\nNet Worth Change: ${netWorthChange >= 0 ? '+' : ''}₹${netWorthChange.toLocaleString('en-IN')}\nFinancial Score Change: ${fhsChange >= 0 ? '+' : ''}${fhsChange}\n\nKeep updating your data regularly to improve accuracy.`;
+  },
+
   recalculateMetrics(profile: UserProfile): void {
       const fhs = this.fhs(profile);
       const metrics = {
@@ -222,7 +266,10 @@ export const finance = {
           savingsRate: this.savingsRate(profile),
           debtToIncomeRatio: this.monthlyDebtToIncomeRatio(profile),
           emergencyFundRunwayMonths: this.emergencyFundRunwayMonths(profile),
-          financialHealthScore: fhs
+          financialHealthScore: fhs,
+          totalIncome: this.totalIncome(profile),
+          totalExpenses: this.totalExpenses(profile),
+          totalLiabilities: this.totalLiabilities(profile)
       };
       
       // Store a snapshot if meaningful change or day has passed
