@@ -17,7 +17,16 @@ export function Dashboard({ profile }: DashboardProps) {
   const surplus = profile.metrics.monthlyCashFlow;
   
   // Data for Net Worth history if available
-  const historyData = [{ name: 'Today', netWorth: nw }];
+  const historyData = (profile.history || []).slice(-6)
+    .filter(h => h.metricsSnapshot)
+    .map(h => ({
+      name: new Date(h.timestamp || Date.now()).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' }),
+      netWorth: h.metricsSnapshot?.netWorth || 0
+    }));
+  
+  if (historyData.length === 0 || historyData[historyData.length - 1].netWorth !== nw) {
+      historyData.push({ name: 'Today', netWorth: nw });
+  }
 
   // Prepare Asset Allocation Data
   const assetData = [];

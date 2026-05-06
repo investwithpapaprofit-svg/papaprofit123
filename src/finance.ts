@@ -161,6 +161,24 @@ export const finance = {
 
     const fmt = (n: number) => `₹${n.toLocaleString('en-IN')}`;
 
+    // 1. Analyze changes vs last snapshot (Memory Engine)
+    if (profile.history && profile.history.length > 0) {
+      const pastMetrics = profile.history.filter(h => h.metricsSnapshot).sort((a,b) => b.timestamp - a.timestamp)[0]?.metricsSnapshot;
+      if (pastMetrics) {
+        const nwDiff = this.netWorth(profile) - pastMetrics.netWorth;
+        if (nwDiff > 5000) {
+            insights.push({ id: 'nw_up', type: 'trend', title: 'Net Worth Growing', description: `Your net worth increased by ${fmt(nwDiff)} recently. Keep it up!`, priority: 'medium' });
+        } else if (nwDiff < -5000) {
+            insights.push({ id: 'nw_down', type: 'warning', title: 'Net Worth Dropping', description: `Your net worth decreased by ${fmt(Math.abs(nwDiff))}. Let's review your recent expenses.`, priority: 'medium' });
+        }
+        
+        const srDiff = sr - pastMetrics.savingsRate;
+        if (srDiff > 5) {
+            insights.push({ id: 'sr_up', type: 'trend', title: 'Savings Improved', description: `Your savings rate improved by ${srDiff.toFixed(1)}%. This accelerates your goals!`, priority: 'low' });
+        }
+      }
+    }
+
     if (sr < 10 && income > 0) insights.push({ id: 'sr_low', type: 'warning', title: 'Low Savings Rate', description: `Your savings rate is below 10%. Target is 20%+. With a savings rate of ${sr.toFixed(1)}%, building long-term wealth will be difficult. Try reducing lifestyle expenses.`, priority: 'high' });
     if (sr >= 20) insights.push({ id: 'sr_good', type: 'trend', title: 'Good Savings Habit', description: `Great savings rate! Make sure this ${fmt(surplus)} monthly surplus is being invested, not just sitting in cash.`, priority: 'medium' });
     if (mDTI > 0.4) insights.push({ id: 'debt_high', type: 'warning', title: 'High Debt Burden', description: `Your EMI commitments take up ${(mDTI*100).toFixed(1)}% of your monthly income. Aim to bring this below 35% to reduce financial stress.`, priority: 'high' });
@@ -181,18 +199,52 @@ export const finance = {
 
     if (!profile.personal?.riskProfile && income > 0) insights.push({ id: 'risk_missing', type: 'recommendation', title: 'Investment Strategy', description: 'Tell me your risk appetite (conservative / moderate / aggressive) so I can tailor investment advice.', priority: 'low' });
 
-    return insights;
+    // Deduplicate and sort by priority
+    const priorityScore = { high: 3, medium: 2, low: 1 };
+    return insights.sort((a, b) => priorityScore[b.priority] - priorityScore[a.priority]);
   },
   
+  getNextBestAction(insights: Insight[]): string {
+     const topLevel = insights.find(i => i.priority === 'high');
+     if (topLevel) return `Next Best Action: **${topLevel.title}** - ${topLevel.description}`;
+     
+     const mediumLevel = insights.find(i => i.priority === 'medium');
+     if (mediumLevel) return `Next Best Action: **${mediumLevel.title}** - ${mediumLevel.description}`;
+     
+     return "Maintain your current financial habits and keep investing!";
+  },
+
   recalculateMetrics(profile: UserProfile): void {
-      profile.metrics = {
+      const fhs = this.fhs(profile);
+      const metrics = {
           netWorth: this.netWorth(profile),
           monthlyCashFlow: this.surplus(profile),
           savingsRate: this.savingsRate(profile),
           debtToIncomeRatio: this.monthlyDebtToIncomeRatio(profile),
           emergencyFundRunwayMonths: this.emergencyFundRunwayMonths(profile),
-          financialHealthScore: this.fhs(profile)
+          financialHealthScore: fhs
       };
+      
+      // Store a snapshot if meaningful change or day has passed
+      if (!profile.history) profile.history = [];
+      const lastSnapshot = profile.history.filter(h => h.metricsSnapshot).sort((a,b) => b.timestamp - a.timestamp)[0];
+      const now = Date.now();
+      
+      // If no snapshot, or last snapshot was > 24 hours ago, or net worth changed by >1%
+      if (!lastSnapshot || 
+          (now - lastSnapshot.timestamp > 86400000) ||
+          (Math.abs(metrics.netWorth - lastSnapshot.metricsSnapshot!.netWorth) > Math.abs(metrics.netWorth * 0.01))) {
+          
+          profile.history.push({
+              date: new Date().toISOString(),
+              timestamp: now,
+              type: 'snapshot',
+              description: 'Profile snapshot updated',
+              metricsSnapshot: Object.assign({}, metrics)
+          });
+      }
+
+      profile.metrics = metrics;
       profile.insights = this.generateInsights(profile);
       
       // Update goal probabilities and monthly needed

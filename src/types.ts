@@ -17,9 +17,11 @@ export interface Expense {
 
 export interface HistoricalEvent {
   date: string;
+  timestamp: number;
   type: string;
   description: string;
   amount?: number;
+  metricsSnapshot?: FinancialMetrics;
 }
 
 export interface Holding {

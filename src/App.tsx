@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { signInWithPopup, onAuthStateChanged, User } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { auth, db, googleProvider } from './firebase';
+import { auth, db, googleProvider, handleFirestoreError, OperationType } from './firebase';
 import { UserProfile } from './types';
 import { parser } from './parser';
 import { finance } from './finance';
@@ -187,7 +187,7 @@ export default function App() {
         }
       }
     } catch (error) {
-      console.error("Error loading profile:", error);
+      handleFirestoreError(error, OperationType.GET, `users/${uid}`);
     }
   };
 
@@ -203,7 +203,7 @@ export default function App() {
         lastUpdated: new Date().toISOString()
       }, { merge: true });
     } catch (error) {
-      console.error("Error saving profile:", error);
+      handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}`);
     }
   };
 

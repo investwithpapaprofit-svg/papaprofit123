@@ -5,7 +5,7 @@ import { finance } from './finance';
 const ai = new GoogleGenAI({ apiKey: process.env.GOOGLE_GENAI_API_KEY || process.env.GEMINI_API_KEY || '' });
 
 export const parser = {
-  async parse(msg: string, currentProfile: UserProfile): Promise<{ intent: string; confidence: number; updates: string[]; newProfile: UserProfile }> {
+  async parse(msg: string, currentProfile: UserProfile): Promise<{ intent: string; confidence: number; updates: string[]; newProfile: UserProfile, clarificationMsg?: string }> {
     const newProfile = JSON.parse(JSON.stringify(currentProfile)) as UserProfile;
     const updates: string[] = [];
     let intent = 'general';
@@ -16,8 +16,10 @@ export const parser = {
     const schema: Schema = {
       type: Type.OBJECT,
       properties: {
-        intent: { type: Type.STRING, description: "Primary intent: income, expense, asset, loan, goal, portfolio, personal, or general." },
-        confidenceScore: { type: Type.NUMBER, description: "Confidence score from 0.0 to 1.0" },
+        intent: { type: Type.STRING, description: "Primary intent: income, expense, asset, loan, goal, portfolio, personal, clarification, or general." },
+        confidenceScore: { type: Type.NUMBER, description: "Confidence score from 0.0 to 1.0. Lower it if inputs are ambiguous or missing key info." },
+        clarificationNeeded: { type: Type.BOOLEAN, description: "Set to true if you cannot confidently extract an exact number (e.g. they provided a huge range or entirely ambiguous text like 'I have money')." },
+        clarificationMessage: { type: Type.STRING, description: "If clarification is needed, write a short question asking the user to specify (e.g., 'Do you have an exact estimate for your gold assets?')." },
         extracted_data: {
           type: Type.OBJECT,
           properties: {
@@ -41,9 +43,11 @@ export const parser = {
         
         RULES:
         - Income/Expenses are ALWAYS MONTHLY. Average out variable incomes.
+        - Handle ranges properly: If a user says "40-50k", extract 45000 as the average. If the range is too broad, set clarificationNeeded to true.
         - Assets/Loans are ALWAYS TOTAL CURRENT BALANCE.
         - Handle numerical shorthands: 'k' -> 1000, 'lakh' -> 100000, 'cr' -> 10000000.
-        - Detect multiple entities (e.g. "I pay 12k rent and 4k on food" -> two expenses).
+        - Detect multiple entities (e.g. "I have gold and 2 lakhs in stocks" -> 2 different assets/portfolio).
+        - If the message is completely ambiguous or missing critical amounts for their main point, set clarificationNeeded to true and write a clarificationMessage.
         - Use confidence score to indicate how sure you are about the extracted numbers and intents.
         - Only output valid JSON matching the schema.
         
@@ -58,6 +62,11 @@ export const parser = {
       intent = data.intent || 'general';
       confidence = data.confidenceScore || 0.5;
       const extracted = data.extracted_data || {};
+      const clarificationMsg = data.clarificationNeeded || confidence < 0.6 ? data.clarificationMessage || "Could you clarify the exact amounts you're referring to?" : undefined;
+
+      if (clarificationMsg) {
+         return { intent: 'clarification', confidence, updates: [], newProfile: currentProfile, clarificationMsg };
+      }
 
       if (extracted.personal) {
           newProfile.personal = newProfile.personal || {};
@@ -172,6 +181,7 @@ export const parser = {
     if (updates.length > 0) {
         newProfile.history.push({
             date: new Date().toISOString(),
+            timestamp: Date.now(),
             type: 'system_update',
             description: `Extracted data from message: ${msg.substring(0, 50)}...`,
         });
