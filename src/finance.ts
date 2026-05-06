@@ -291,6 +291,11 @@ export const finance = {
           });
       }
 
+      // Limit history to last 20 entries
+      if (profile.history.length > 20) {
+          profile.history = profile.history.slice(-20);
+      }
+
       profile.metrics = metrics;
       profile.insights = this.generateInsights(profile);
       

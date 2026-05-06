@@ -273,6 +273,12 @@ export default function App() {
     // 2. Parse message & update profile
     const parsed = await parser.parse(userMsg, profile);
     
+    if (parsed.clarificationMsg) {
+        setIsTyping(false);
+        setChatHistory(prev => [...prev, { role: 'ai', content: parsed.clarificationMsg! }]);
+        return;
+    }
+
     let updatedProfile = profile;
     if (parsed && parsed.updates && parsed.updates.length > 0) {
       updatedProfile = parsed.newProfile;
@@ -520,13 +526,13 @@ export default function App() {
           <div>
             <div className="profile-section">
               <h4>Income</h4>
-              {profile.income.map((inc, i) => <div key={i} className="profile-row"><span className="key">{inc.name}</span><span className="val">{fmt(inc.amount)}</span></div>)}
+              {profile.income.map((inc, i) => <div key={i} className="profile-row"><span className="key">{inc.name}</span><span className="val">{fmt((inc as any).value || (inc as any).amount)}</span></div>)}
               <div className="profile-row mt-2 font-bold"><span className="key">Total Monthly Income</span><span className="val">{fmt(finance.totalIncome(profile))}</span></div>
             </div>
             
             <div className="profile-section">
               <h4>Expenses</h4>
-              {profile.expenses.map((exp, i) => <div key={i} className="profile-row"><span className="key">{exp.name}</span><span className="val">{fmt(exp.amount)}</span></div>)}
+              {profile.expenses.map((exp, i) => <div key={i} className="profile-row"><span className="key">{exp.name}</span><span className="val">{fmt((exp as any).value || (exp as any).amount)}</span></div>)}
               <div className="profile-row mt-2 font-bold"><span className="key">Total Monthly Expenses</span><span className="val">{fmt(finance.totalExpenses(profile))}</span></div>
             </div>
             

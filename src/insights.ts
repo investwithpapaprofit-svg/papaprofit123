@@ -64,7 +64,6 @@ ${finance.getNextBestAction(profile.insights || [])}
 CURRENT COPILOT ANALYSIS:
 - Extracted: ${parsedData.updates.length > 0 ? parsedData.updates.join(', ') : 'No new hard data found.'}
 - Parsing Intent: ${parsedData.intent}
-${parsedData.clarificationMsg ? `- CLARIFICATION NEEDED FLAG TRIPPED: The user provided ambiguous data or a broad range. Tell them you could not log it securely, and directly ask them: "${parsedData.clarificationMsg}"` : ''}
 
 Premium Status: ${profile.isPremium ? 'PRO USER - Give advanced investment, AI portfolio intelligence, and tax advice' : 'FREE USER - Do NOT give specific stock or advanced investment advice. Tell them to upgrade to Pro for personalized investment strategies.'}`;
 
