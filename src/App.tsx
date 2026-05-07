@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { signInWithPopup, onAuthStateChanged, User } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db, googleProvider, handleFirestoreError, OperationType } from './firebase';
@@ -7,9 +7,7 @@ import { parser } from './parser';
 import { finance } from './finance';
 import { insights } from './insights';
 import { Portfolio } from './components/Portfolio';
-import { FinancialSourceEditor } from './components/FinancialSourceEditor';
 import { Dashboard } from './components/Dashboard';
-import { investments } from './investments';
 
 import DOMPurify from 'dompurify';
 
@@ -54,13 +52,15 @@ export default function App() {
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   const ONBOARDING_QUESTIONS = [
-    "Hi! I'm your PapaProfit AI. Let's get your profile set up. First, what's your monthly **Salary**?",
-    "Got it. Do you have any **Bonuses** or other regular income?",
-    "Any **Side Income** (freelance, business, etc.)?",
-    "Now for expenses. How much do you spend on **Rent/Home EMI** monthly?",
-    "What about **Groceries & Food**?",
-    "How much are your monthly **Bills** (Electricity, Internet, Phone, etc.)?",
-    "And finally, what's your typical **Lifestyle Spending** (Shopping, Dining out, Entertainment)?"
+    "**[Step 1/9]** Hi! I'm your PapaProfit AI. Let's get your profile set up. First, what's your **monthly income**?",
+    "**[Step 2/9]** Is your income **fixed or variable**?",
+    "**[Step 3/9]** How much do you **spend** monthly on expenses?",
+    "**[Step 4/9]** How much **savings** do you currently have?",
+    "**[Step 5/9]** Do you have any **loans**? If yes, how much?",
+    "**[Step 6/9]** How much **EMI** do you pay monthly?",
+    "**[Step 7/9]** Do you **invest** in stocks or gold? If so, roughly how much?",
+    "**[Step 8/9]** What is your main **financial goal**? (e.g. buy a house, retire early)",
+    "**[Step 9/9]** Finally, do you currently track your expenses and invest regularly?"
   ];
 
   useEffect(() => {
@@ -355,7 +355,6 @@ export default function App() {
   const sr = profile.metrics.savingsRate;
   const dr = profile.metrics.debtToIncomeRatio;
   const metricsInsights = profile.insights || [];
-  const recs = investments.generateRecommendations(profile);
 
   return (
     <div id="appShell">
@@ -410,7 +409,7 @@ export default function App() {
             </div>
             <div className="metric-card">
               <div className="metric-label">Debt Ratio</div>
-              <div className={`metric-value ${dr <= 30 ? 'green' : dr <= 50 ? 'amber' : 'red'}`} title={`${dr.toFixed(2)}%`}>{finance.totalIncome(profile) > 0 ? `${dr.toFixed(1)}%` : '--'}</div>
+              <div className={`metric-value ${(dr * 100) <= 30 ? 'green' : (dr * 100) <= 50 ? 'amber' : 'red'}`} title={`${(dr * 100).toFixed(2)}%`}>{finance.totalIncome(profile) > 0 ? `${(dr * 100).toFixed(1)}%` : '--'}</div>
             </div>
           </div>
 

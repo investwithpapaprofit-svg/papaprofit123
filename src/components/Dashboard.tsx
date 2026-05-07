@@ -1,6 +1,4 @@
-import React from 'react';
 import { UserProfile } from '../types';
-import { finance } from '../finance';
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend
@@ -82,7 +80,7 @@ export function Dashboard({ profile }: DashboardProps) {
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
               <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6B7280' }} />
               <YAxis axisLine={false} tickLine={false} tickFormatter={fmtShort} tick={{ fontSize: 12, fill: '#6B7280' }} />
-              <RechartsTooltip formatter={(value: number) => [fmt(value), 'Net Worth']} labelStyle={{ color: '#111827', fontWeight: 600 }} />
+              <RechartsTooltip formatter={(value: any) => [fmt(Number(value) || 0), 'Net Worth']} labelStyle={{ color: '#111827', fontWeight: 600 }} />
               <Area type="monotone" dataKey="netWorth" stroke="#1a7a4a" fillOpacity={1} fill="url(#colorNw)" strokeWidth={3} />
             </AreaChart>
           </ResponsiveContainer>
@@ -105,11 +103,11 @@ export function Dashboard({ profile }: DashboardProps) {
                   dataKey="value"
                   stroke="none"
                 >
-                  {assetData.map((entry, index) => (
+                  {assetData.map((_entry, index) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
-                <RechartsTooltip formatter={(value: number) => fmt(value)} />
+                <RechartsTooltip formatter={(value: any) => fmt(Number(value) || 0)} />
                 <Legend layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{ fontSize: '12px' }}/>
               </PieChart>
             </ResponsiveContainer>

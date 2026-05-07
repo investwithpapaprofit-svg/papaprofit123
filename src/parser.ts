@@ -1,8 +1,6 @@
 import { UserProfile } from './types';
-import { GoogleGenAI, Type, Schema } from '@google/genai';
 import { finance } from './finance';
-
-const ai = new GoogleGenAI({ apiKey: process.env.GOOGLE_GENAI_API_KEY || process.env.GEMINI_API_KEY || '' });
+import { auth } from './firebase';
 
 export const parser = {
   async parse(msg: string, currentProfile: UserProfile): Promise<{ intent: string; confidence: number; updates: string[]; newProfile: UserProfile, clarificationMsg?: string }> {
@@ -13,57 +11,24 @@ export const parser = {
 
     const fmt = (n: number) => `₹${n.toLocaleString('en-IN')}`;
 
-    const schema: Schema = {
-      type: Type.OBJECT,
-      properties: {
-        intent: { type: Type.STRING, description: "Primary intent: income, expense, asset, loan, goal, portfolio, personal, clarification, or general." },
-        confidenceScore: { type: Type.NUMBER, description: "Confidence score from 0.0 to 1.0. Lower it if inputs are ambiguous or missing key info." },
-        clarificationNeeded: { type: Type.BOOLEAN, description: "Set to true if you cannot confidently extract an exact number (e.g. they provided a huge range or entirely ambiguous text like 'I have money')." },
-        clarificationMessage: { type: Type.STRING, description: "If clarification is needed, write a short question asking the user to specify (e.g., 'Do you have an exact estimate for your gold assets?')." },
-        extracted_data: {
-          type: Type.OBJECT,
-          properties: {
-            personal: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, age: { type: Type.NUMBER }, riskProfile: { type: Type.STRING, enum: ['conservative', 'moderate', 'aggressive'] } } },
-            incomeSources: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, value: { type: Type.NUMBER } } } },
-            expenses: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, value: { type: Type.NUMBER }, category: { type: Type.STRING } } } },
-            subscriptions: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, cost: { type: Type.NUMBER }, billingCycle: { type: Type.STRING, enum: ['monthly', 'yearly'] } } } },
-            loans: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, amount: { type: Type.NUMBER }, rate: { type: Type.NUMBER }, emi: { type: Type.NUMBER } } } },
-            assets: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, type: { type: Type.STRING, enum: ['property', 'gold', 'cash', 'vehicle', 'other'] }, value: { type: Type.NUMBER }, mortgageable: { type: Type.BOOLEAN } } } },
-            portfolio: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { symbol: { type: Type.STRING }, name: { type: Type.STRING }, assetType: { type: Type.STRING, enum: ['stock', 'etf', 'mutual_fund', 'crypto', 'bond', 'other'] }, quantity: { type: Type.NUMBER }, averageBuyPrice: { type: Type.NUMBER } } } },
-            goals: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, target: { type: Type.NUMBER }, months: { type: Type.NUMBER }, type: { type: Type.STRING } } } }
-          }
-        }
-      }
-    };
-
     try {
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: `You are an advanced financial data extraction engine. Analyze the user message and extract all explicit and implied financial entities.
-        
-        RULES:
-        - Income/Expenses are ALWAYS MONTHLY. Average out variable incomes.
-        - Handle ranges properly: If a user says "40-50k", extract 45000 as the average. If the range is too broad, set clarificationNeeded to true.
-        - Assets/Loans are ALWAYS TOTAL CURRENT BALANCE.
-        - Handle numerical shorthands: 'k' -> 1000, 'lakh' -> 100000, 'cr' -> 10000000.
-        - Parse Multiple Entities: Extract EVERY entity mentioned. 
-          * e.g. "I earn 50k and spend 30k" -> extract BOTH income Sources & expenses.
-          * e.g. "income 60k expenses 30k loan 1 lakh" -> extract incomeSources, expenses, AND loans.
-          * e.g. "I have gold and 2 lakhs in stocks" -> extract BOTH assets (gold) and portfolio (stocks).
-          * e.g. "I have 2 loans 50k and 1 lakh" -> extract TWO separate loans.
-        - Detect multiple entities (e.g. "I have gold and 2 lakhs in stocks" -> 2 different assets/portfolio).
-        - If the message is completely ambiguous or missing critical amounts for their main point, set clarificationNeeded to true and write a clarificationMessage.
-        - Use confidence score to indicate how sure you are about the extracted numbers and intents.
-        - Only output valid JSON matching the schema.
-        
-        Message: "${msg}"`,
-        config: {
-          responseMimeType: 'application/json',
-          responseSchema: schema,
-          temperature: 0.1
-        }
+      const token = await auth.currentUser?.getIdToken();
+      
+      const response = await fetch('/api/ai/parse', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ msg })
       });
-      const data = JSON.parse(response.text || '{}');
+
+      if (!response.ok) {
+        throw new Error('Network response was not ok');
+      }
+
+      const { data } = await response.json();
+      
       intent = data.intent || 'general';
       confidence = data.confidenceScore || 0.5;
       const extracted = data.extracted_data || {};
@@ -73,7 +38,7 @@ export const parser = {
          return { intent: 'clarification', confidence, updates: [], newProfile: currentProfile, clarificationMsg };
       }
 
-      if (extracted.personal) {
+      if (extracted.personal && typeof extracted.personal === 'object') {
           newProfile.personal = newProfile.personal || {};
           if(extracted.personal.name) newProfile.personal.name = extracted.personal.name;
           if(extracted.personal.age) newProfile.personal.age = extracted.personal.age;
@@ -81,18 +46,20 @@ export const parser = {
           updates.push("Personal details updated");
       }
 
-      if (extracted.incomeSources?.length > 0) {
+      if (Array.isArray(extracted.incomeSources) && extracted.incomeSources.length > 0) {
         extracted.incomeSources.forEach((source: any) => {
-          const existing = newProfile.income.find(s => s.name.toLowerCase() === source.name.toLowerCase());
+          if (!source || typeof source.name !== 'string' || typeof source.value !== 'number') return;
+          const existing = newProfile.income.find(s => s.name?.toLowerCase() === source.name?.toLowerCase());
           if (existing) existing.value = source.value;
           else newProfile.income.push(source);
           updates.push(`Income source '${source.name}' recorded as ${fmt(source.value)}/mo`);
         });
       }
 
-      if (extracted.expenses?.length > 0) {
+      if (Array.isArray(extracted.expenses) && extracted.expenses.length > 0) {
         extracted.expenses.forEach((expense: any) => {
-          const existing = newProfile.expenses.find(e => e.name.toLowerCase() === expense.name.toLowerCase());
+          if (!expense || typeof expense.name !== 'string' || typeof expense.value !== 'number') return;
+          const existing = newProfile.expenses.find(e => e.name?.toLowerCase() === expense.name?.toLowerCase());
           if (existing) {
               existing.value = expense.value;
               if (expense.category) existing.category = expense.category;
@@ -102,20 +69,22 @@ export const parser = {
         });
       }
 
-      if (extracted.subscriptions?.length > 0) {
+      if (Array.isArray(extracted.subscriptions) && extracted.subscriptions.length > 0) {
           extracted.subscriptions.forEach((sub: any) => {
-             const existing = newProfile.subscriptions.find(s => s.name.toLowerCase() === sub.name.toLowerCase());
+             if (!sub || typeof sub.name !== 'string' || typeof sub.cost !== 'number') return;
+             const existing = newProfile.subscriptions.find(s => s.name?.toLowerCase() === sub.name?.toLowerCase());
              if (existing) {
                  existing.cost = sub.cost;
-                 existing.billingCycle = sub.billingCycle;
+                 if (sub.billingCycle) existing.billingCycle = sub.billingCycle;
              } else newProfile.subscriptions.push(sub);
-             updates.push(`Subscription '${sub.name}' recorded at ${fmt(sub.cost)}/${sub.billingCycle}`);
+             updates.push(`Subscription '${sub.name}' recorded at ${fmt(sub.cost)}/${sub.billingCycle || 'mo'}`);
           });
       }
 
-      if (extracted.loans?.length > 0) {
+      if (Array.isArray(extracted.loans) && extracted.loans.length > 0) {
         extracted.loans.forEach((loan: any) => {
-          const existing = newProfile.loans.find(l => l.name.toLowerCase() === loan.name.toLowerCase());
+          if (!loan || typeof loan.name !== 'string' || typeof loan.amount !== 'number') return;
+          const existing = newProfile.loans.find(l => l.name?.toLowerCase() === loan.name?.toLowerCase());
           if (existing) {
             if(loan.amount) existing.amount = loan.amount;
             if(loan.rate) existing.rate = loan.rate;
@@ -127,9 +96,10 @@ export const parser = {
         });
       }
 
-      if (extracted.assets?.length > 0) {
+      if (Array.isArray(extracted.assets) && extracted.assets.length > 0) {
           extracted.assets.forEach((asset: any) => {
-             const existing = newProfile.assets.find(a => a.name.toLowerCase() === asset.name.toLowerCase());
+             if (!asset || typeof asset.name !== 'string' || typeof asset.value !== 'number') return;
+             const existing = newProfile.assets.find(a => a.name?.toLowerCase() === asset.name?.toLowerCase());
              if (existing) {
                  existing.value = asset.value;
                  if(asset.mortgageable !== undefined) existing.mortgageable = asset.mortgageable;
@@ -140,29 +110,32 @@ export const parser = {
           });
       }
 
-      if (extracted.portfolio?.length > 0) {
+      if (Array.isArray(extracted.portfolio) && extracted.portfolio.length > 0) {
           extracted.portfolio.forEach((holding: any) => {
-              const existing = newProfile.portfolio.find(p => p.symbol.toLowerCase() === holding.symbol?.toLowerCase() || p.name.toLowerCase() === holding.name.toLowerCase());
+              if (!holding || (typeof holding.symbol !== 'string' && typeof holding.name !== 'string')) return;
+              const symbolToMatch = holding.symbol || holding.name?.substring(0,4).toUpperCase();
+              const existing = newProfile.portfolio.find(p => p.symbol?.toLowerCase() === symbolToMatch?.toLowerCase() || p.name?.toLowerCase() === holding.name?.toLowerCase());
               if (existing) {
-                  existing.quantity = holding.quantity;
-                  existing.averageBuyPrice = holding.averageBuyPrice;
+                  if (holding.quantity) existing.quantity = holding.quantity;
+                  if (holding.averageBuyPrice) existing.averageBuyPrice = holding.averageBuyPrice;
               } else {
                   newProfile.portfolio.push({
-                      symbol: holding.symbol || holding.name?.substring(0,4).toUpperCase(),
-                      name: holding.name,
+                      symbol: symbolToMatch,
+                      name: holding.name || holding.symbol,
                       assetType: holding.assetType || 'other',
                       quantity: holding.quantity || 1,
                       averageBuyPrice: holding.averageBuyPrice || 0,
                       currentPrice: holding.averageBuyPrice || 0
                   });
               }
-              updates.push(`Portfolio updated with ${holding.quantity}x ${holding.name}`);
+              updates.push(`Portfolio updated with ${holding.quantity || 1}x ${holding.name || holding.symbol}`);
           });
       }
       
-      if (extracted.goals?.length > 0) {
+      if (Array.isArray(extracted.goals) && extracted.goals.length > 0) {
           extracted.goals.forEach((goal: any) => {
-             const existing = newProfile.goals.find(g => g.name.toLowerCase() === goal.name.toLowerCase());
+             if (!goal || typeof goal.name !== 'string' || typeof goal.target !== 'number') return;
+             const existing = newProfile.goals.find(g => g.name?.toLowerCase() === goal.name?.toLowerCase());
              if (existing) {
                  if (goal.target) existing.target = goal.target;
                  if (goal.months) existing.months = goal.months;
@@ -189,6 +162,7 @@ export const parser = {
             timestamp: Date.now(),
             type: 'system_update',
             description: `Extracted data from message: ${msg.substring(0, 50)}...`,
+            metricsSnapshot: newProfile.metrics
         });
     }
 

@@ -3,7 +3,10 @@ import { UserProfile, Insight, FinancialGoal } from './types';
 export const finance = {
   totalAssets(profile: UserProfile): number {
     const assetsTotal = (profile.assets || []).reduce((sum, a) => sum + (a.value || 0), 0);
-    const portfolioTotal = (profile.portfolio || []).reduce((sum, p) => sum + (p.marketValue || p.currentPrice || p.averageBuyPrice || 0) * p.quantity, 0);
+    const portfolioTotal = (profile.portfolio || []).reduce((sum, p) => {
+      const val = p.marketValue !== undefined ? p.marketValue : (p.currentPrice || p.averageBuyPrice || 0) * (p.quantity || 1);
+      return sum + val;
+    }, 0);
     return assetsTotal + portfolioTotal;
   },
 
@@ -88,7 +91,10 @@ export const finance = {
     else if (eFund >= 1) score += 5;
 
     // 4. Investment Consistency (Max 15 points)
-    const portfolioTotal = (profile.portfolio || []).reduce((sum, p) => sum + (p.marketValue || p.currentPrice || p.averageBuyPrice || 0) * p.quantity, 0);
+    const portfolioTotal = (profile.portfolio || []).reduce((sum, p) => {
+      const val = p.marketValue !== undefined ? p.marketValue : (p.currentPrice || p.averageBuyPrice || 0) * (p.quantity || 1);
+      return sum + val;
+    }, 0);
     if (portfolioTotal > income * 12) score += 15;
     else if (portfolioTotal > income * 6) score += 10;
     else if (portfolioTotal > income) score += 5;
@@ -210,19 +216,26 @@ export const finance = {
     const savingsRate = this.savingsRate(profile);
     const stockAssets = (profile.portfolio || []).filter(p => ['stock', 'etf', 'mutual_fund'].includes(p.assetType));
 
+    if (income === 0 && !profile.onboardingCompleted) {
+        return "Complete your profile setup to get personalized advice.";
+    }
+    if (income === 0) {
+        return "Provide your monthly income so I can give accurate recommendations.";
+    }
+
     if (income > 0 && totalLoans > (income * 12)) {
-      return "Next Best Action: **Focus on reducing your debt aggressively before investing.**";
+      return "Focus on reducing your debt aggressively before investing.";
     }
 
     if (income > 0 && savingsRate < 20) {
-      return "Next Best Action: **Increase your savings rate to at least 20% of your income.**";
+      return "Increase your savings rate to at least 20% of your income.";
     }
 
     if (stockAssets.length === 0) {
-      return "Next Best Action: **Start investing in diversified equity like index funds.**";
+      return "Start investing in diversified equity like index funds.";
     }
 
-    return "Next Best Action: **Optimize your portfolio allocation for better long-term growth.**";
+    return "Optimize your portfolio allocation for better long-term growth.";
   },
 
   compareWithLast(profile: UserProfile): string[] {

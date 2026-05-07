@@ -1,19 +1,15 @@
 import { UserProfile } from './types';
 import { finance } from './finance';
-import { GoogleGenAI } from '@google/genai';
-
-const ai = new GoogleGenAI({ apiKey: process.env.GOOGLE_GENAI_API_KEY || process.env.GEMINI_API_KEY || '' });
+import { auth } from './firebase';
 
 export const insights = {
   async generateResponse(userMsg: string, parsedData: any, profile: UserProfile, chatHistory: { role: string; content: string }[], onboardingStep?: number, onboardingQuestions?: string[]): Promise<string> {
     const fhsScore = profile.metrics.financialHealthScore || 0;
     const fhsInfo = finance.fhsLabel(fhsScore);
-    const collateral = (profile.assets || []).find(a => a.type === 'property' && a.mortgageable);
-    const highDebt = [...(profile.loans || [])].sort((a, b) => b.rate - a.rate)[0];
 
     const fmt = (n: number) => `₹${n.toLocaleString('en-IN')}`;
 
-    const onboardingCtx = onboardingStep && onboardingQuestions && onboardingStep < onboardingQuestions.length
+    const onboardingCtx = onboardingStep !== undefined && onboardingQuestions && onboardingStep < onboardingQuestions.length
       ? `\nONBOARDING STATUS: The user is currently in a guided setup. The next thing we need to know is: "${onboardingQuestions[onboardingStep]}". 
          If the user is just chatting or being casual (like saying "hi"), acknowledge them warmly and then naturally ask the next onboarding question. 
          DO NOT be a robot. Be a real advisor.`
@@ -29,11 +25,19 @@ CRITICAL:
 ${onboardingCtx}
 
 FORMATTING RULES:
-- Use clear sections with bold headers like **📊 The Numbers** or **💡 My Thoughts**
-- Use line breaks between sections
-- Keep responses focused — 150 to 250 words
-- Always end with a follow-up question OR a clear next action
-- Use ₹ symbol and Indian number format (lakh, crore)
+When providing a full financial breakdown, structure your response EXACTLY like this:
+**Summary:**
+(1-2 lines summarizing their overall financial stance - e.g. "You have moderate income with high expenses and existing debt.")
+
+**Insights:**
+- (Point 1: highly specific, data-driven insight)
+- (Point 2: another sharp insight)
+
+**Next Action:**
+${finance.getNextBestAction(profile)}
+
+- Keep responses focused.
+- Use ₹ symbol and Indian number format (lakh, crore).
 - Be hyper-specific and actionable (e.g. "Increase saving by 5000 to reach your goal 3 months faster" instead of "increase savings").
 
 CLIENT PROFILE:
@@ -56,16 +60,12 @@ Savings rate: ${profile.metrics.savingsRate.toFixed(1)}%
 Emergency Runway: ${profile.metrics.emergencyFundRunwayMonths.toFixed(1)} months
 Financial Health Score: ${fhsScore > 0 ? fhsScore + '/100 (' + fhsInfo.label + ')' : 'Not enough data yet'}
 
-SYSTEM INSIGHTS (Address the HIGH priority ones if relevant):
+SYSTEM INSIGHTS:
 ${(profile.insights || []).map(i => `[${i.priority.toUpperCase()}] ${i.title}: ${i.description}`).join('\n')}
 
-${finance.getNextBestAction(profile)}
-
 CURRENT COPILOT ANALYSIS:
-- Extracted: ${parsedData.updates.length > 0 ? parsedData.updates.join(', ') : 'No new hard data found.'}
-- Parsing Intent: ${parsedData.intent}
-
-Premium Status: ${profile.isPremium ? 'PRO USER - Give advanced investment, AI portfolio intelligence, and tax advice' : 'FREE USER - Do NOT give specific stock or advanced investment advice. Tell them to upgrade to Pro for personalized investment strategies.'}`;
+- Extracted: ${parsedData?.updates?.length > 0 ? parsedData.updates.join(', ') : 'No new hard data found.'}
+- Parsing Intent: ${parsedData?.intent || 'general'}`;
 
     let messages = chatHistory.slice(-6).map((h: any) => ({
       role: h.role === 'user' ? 'user' : 'model',
@@ -77,24 +77,28 @@ Premium Status: ${profile.isPremium ? 'PRO USER - Give advanced investment, AI p
     }
 
     try {
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: messages,
-        config: {
-          systemInstruction: systemCtx,
-          temperature: 0.7,
-          maxOutputTokens: 600
-        }
+      const token = await auth.currentUser?.getIdToken();
+
+      const response = await fetch('/api/ai/respond', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ messages, systemCtx })
       });
-      
-      let finalResponse = response.text || 'Sorry, I had trouble with that. Please try again.';
+
+      if (!response.ok) {
+        throw new Error('Network response was not ok');
+      }
+
+      const data = await response.json();
+      let finalResponse = data.text || 'Sorry, I had trouble with that. Please try again.';
       
       // Memory Engine & Report Injection (Deterministic)
       const changes = finance.compareWithLast(profile);
-      const action = finance.getNextBestAction(profile);
       let report = '';
       
-      // Note: We'll show the report roughly every 5th snapshot. For now, since user wants it visible, we'll check if it's the 5th message in history or similar.
       if (profile.history && profile.history.length > 2 && (profile.history.length % 5 === 0 || userMsg.toLowerCase().includes('report'))) {
          report = finance.generateWeeklyReport(profile);
       }
@@ -103,7 +107,6 @@ Premium Status: ${profile.isPremium ? 'PRO USER - Give advanced investment, AI p
       if (changes.length > 0) {
           attachments.push(`📈 **Trend Update**\n${changes.join('\n')}`);
       }
-      attachments.push(`🎯 **${action}**`);
       if (report && !report.includes('Not enough data')) {
           attachments.push(report);
       }
