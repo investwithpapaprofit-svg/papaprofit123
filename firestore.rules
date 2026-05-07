@@ -12,23 +12,28 @@ service cloud.firestore {
     }
     
     function isAdmin() {
-      return isAuthenticated() &&
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.profile.role == 'admin' ||
-          (request.auth.token.email == "harshitvannam@gmail.com" && request.auth.token.email_verified == true));
+      return isAuthenticated() && (
+        request.auth.token.admin == true ||
+        (request.auth.token.email == "investwithpapaprofit@gmail.com" && request.auth.token.email_verified == true) ||
+        (request.auth.token.email == "harshitvannam@gmail.com" && request.auth.token.email_verified == true)
+      );
+    }
+
+    function isSafeProfileWrite() {
+      let incoming = request.resource.data.get('profile', {});
+      let existing = resource == null ? {} : resource.data.get('profile', {});
+      
+      let keepsPremium = incoming.get('isPremium', false) == existing.get('isPremium', false);
+      let keepsRole = incoming.get('role', 'user') == existing.get('role', 'user');
+
+      return keepsPremium && keepsRole;
     }
     
     match /users/{userId} {
       allow read: if isOwner(userId) || isAdmin();
       
-      // Allow creation if the user is the owner and doesn't try to set isPremium to true
-      allow create: if isOwner(userId) 
-        && (!('profile' in request.resource.data) || !('isPremium' in request.resource.data.profile) || request.resource.data.profile.isPremium == false);
-      
-      // Allow update if the user is the owner and doesn't modify the isPremium field
-      allow update: if isOwner(userId) 
-        && (!('profile' in request.resource.data) || !('isPremium' in request.resource.data.profile) || 
-            request.resource.data.profile.isPremium == resource.data.profile.isPremium)
-        || isAdmin();
+      allow create: if isOwner(userId) && isSafeProfileWrite();
+      allow update: if (isOwner(userId) && isSafeProfileWrite()) || isAdmin();
     }
   }
 }

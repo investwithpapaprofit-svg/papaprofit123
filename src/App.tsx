@@ -164,10 +164,13 @@ export default function App() {
 
           // Fetch live prices for stocks
           if (safeProfile.portfolio && safeProfile.portfolio.length > 0) {
+            const token = await auth.currentUser?.getIdToken();
             const updatedStocks = await Promise.all(safeProfile.portfolio.map(async (holding) => {
               try {
                 if (holding.assetType === 'stock') {
-                  const res = await fetch(`/api/stock/quote?symbol=${holding.symbol}`);
+                  const res = await fetch(`/api/stock/quote?symbol=${holding.symbol}`, {
+                    headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+                  });
                   if (res.ok) {
                     const quote = await res.json();
                     if (quote && quote.regularMarketPrice) {

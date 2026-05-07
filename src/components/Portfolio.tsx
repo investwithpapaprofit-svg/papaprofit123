@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Holding, UserProfile } from '../types';
+import { auth } from '../firebase';
 
 interface PortfolioProps {
   profile: UserProfile;
@@ -21,7 +22,10 @@ export function Portfolio({ profile, onUpdate }: PortfolioProps) {
     }
     setIsSearching(true);
     try {
-      const res = await fetch(`/api/stock/search?q=${encodeURIComponent(q)}`);
+      const token = await auth.currentUser?.getIdToken();
+      const res = await fetch(`/api/stock/search?q=${encodeURIComponent(q)}`, {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+      });
       if (res.ok) {
         const data = await res.json();
         setResults(data);

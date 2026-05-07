@@ -10,6 +10,7 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { GoogleGenAI, Type, Schema } from '@google/genai';
 import { z } from 'zod';
+import { finance } from './src/finance';
 
 dotenv.config();
 
@@ -58,8 +59,17 @@ async function startServer() {
 
   // Security Middlewares
   app.use(helmet({
-    contentSecurityPolicy: false,
     crossOriginEmbedderPolicy: false,
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'", "https://*.googleapis.com", "https://*.firebaseio.com", "wss://*.firebaseio.com"],
+        scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://*.googleapis.com", "https://*.firebase.com"],
+        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+        imgSrc: ["'self'", "data:", "blob:", "https://*.google.com", "https://*.googleusercontent.com"],
+        fontSrc: ["'self'", "https://fonts.gstatic.com"],
+        frameAncestors: ["*"], // allow iframe embedding in app preview
+      }
+    }
   }));
   
   const limiter = rateLimit({
@@ -77,6 +87,10 @@ async function startServer() {
 
   app.post('/api/premium/upgrade', requireAuth, async (req, res) => {
     try {
+      if (process.env.ENABLE_MOCK_PREMIUM !== 'true') {
+        return res.status(403).json({ error: 'Direct upgrade is disabled. Please complete the real checkout flow.' });
+      }
+
       const uid = (req as any).user.uid;
       await firestore.collection('users').doc(uid).set({
         profile: {
@@ -188,15 +202,78 @@ async function startServer() {
     try {
       const respondSchema = z.object({
         messages: z.array(z.any()).min(1),
-        systemCtx: z.string().min(1)
+        parsedData: z.any().optional(),
+        onboardingStep: z.number().optional(),
+        onboardingQuestions: z.array(z.string()).optional()
       });
       const parsedReq = respondSchema.safeParse(req.body);
       
       if (!parsedReq.success) {
-        return res.status(400).json({ error: 'Messages array and systemCtx are required' });
+        return res.status(400).json({ error: 'Messages array is required' });
       }
 
-      const { messages, systemCtx } = parsedReq.data;
+      const { messages, parsedData, onboardingStep, onboardingQuestions } = parsedReq.data;
+      
+      const uid = (req as any).user.uid;
+      const docSnap = await firestore.collection('users').doc(uid).get();
+      const profile = docSnap.exists ? (docSnap.data()?.profile || {}) : {};
+      
+      const fmt = (n: number) => `₹${(n||0).toLocaleString('en-IN')}`;
+      const fhsScore = profile.metrics?.financialHealthScore || 0;
+      const fhsInfo = finance.fhsLabel(fhsScore);
+
+      const onboardingCtx = onboardingStep !== undefined && onboardingQuestions && onboardingStep < onboardingQuestions.length
+        ? `\nONBOARDING STATUS: The user is currently in a guided setup. The next thing we need to know is: "${onboardingQuestions[onboardingStep]}". 
+           If the user is just chatting or being casual (like saying "hi"), acknowledge them warmly and then naturally ask the next onboarding question. 
+           DO NOT be a robot. Be a real advisor.`
+        : "";
+
+      const systemCtx = `You are PapaProfit — a sharp, warm, and direct personal financial advisor for Indian users. 
+      You act as a world-class AI financial copilot.
+
+  CRITICAL: 
+  - Proactive, not just reactive. Give insight based on the numbers, do not just parrot data back to them.
+  - If the user gave you data, confirm what you updated in their profile, and what the impact is.
+  - If they are frustrated or just chatting, be empathetic and conversational.
+  ${onboardingCtx}
+
+  FORMATTING RULES:
+  When providing a full financial breakdown, structure your response EXACTLY like this:
+  **Summary:**
+  (1-2 lines summarizing their overall financial stance - e.g. "You have moderate income with high expenses and existing debt.")
+
+  **Insights:**
+  - (Point 1: highly specific, data-driven insight)
+  - (Point 2: another sharp insight)
+
+  **Next Action:**
+  ${finance.getNextBestAction(profile)}
+
+  - Keep responses focused.
+  - Use ₹ symbol and Indian number format (lakh, crore).
+  - Be hyper-specific and actionable.
+
+  CLIENT PROFILE:
+  Name: ${profile.personal?.name || 'Unknown'}
+  Age: ${profile.personal?.age || 'Unknown'}
+  Risk Profile: ${profile.personal?.riskProfile || 'Unknown'}
+
+  METRICS:
+  Monthly Income: ${fmt(finance.totalIncome(profile))}
+  Monthly Expenses: ${fmt(finance.totalExpenses(profile))}
+  EMI: ${fmt(finance.totalEMI(profile))}
+  Total Loans: ${fmt(finance.totalLiabilities(profile))}
+  Total Assets: ${fmt(finance.totalAssets(profile))}
+
+  ADVANCED METRICS:
+  Net worth: ${fmt(profile.metrics?.netWorth)}
+  Monthly surplus: ${fmt(profile.metrics?.monthlyCashFlow)}
+  Savings rate: ${(profile.metrics?.savingsRate || 0).toFixed(1)}%
+  Financial Health Score: ${fhsScore > 0 ? fhsScore + '/100 (' + fhsInfo.label + ')' : 'Not enough data yet'}
+
+  CURRENT COPILOT ANALYSIS:
+  - Extracted: ${parsedData?.updates?.length > 0 ? parsedData.updates.join(', ') : 'No new hard data found.'}
+  - Parsing Intent: ${parsedData?.intent || 'general'}`;
 
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
