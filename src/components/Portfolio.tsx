@@ -26,6 +26,11 @@ export function Portfolio({ profile, onUpdate }: PortfolioProps) {
       const res = await fetch(`/api/stock/search?q=${encodeURIComponent(q)}`, {
         headers: token ? { 'Authorization': `Bearer ${token}` } : {}
       });
+      if (res.status === 401 || res.status === 403) {
+        console.error("Auth expired");
+        setIsSearching(false);
+        return;
+      }
       if (res.ok) {
         const data = await res.json();
         setResults(data);

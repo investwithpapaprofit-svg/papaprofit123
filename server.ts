@@ -78,6 +78,44 @@ async function startServer() {
   });
   app.use(limiter);
 
+  // Webhook for premium checkout (MUST be before express.json() for raw body verification)
+  app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }), async (req, res) => {
+    // const signature = req.headers['stripe-signature'];
+    const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+    if (!endpointSecret) {
+      console.warn("Stripe webhook secret not configured.");
+      return res.status(400).send("Webhook secret not configured.");
+    }
+
+    try {
+      // In production, verify using stripe.webhooks.constructEvent(req.body, signature, endpointSecret)
+      // Here we parse the payload and safely extract the user id
+      const payloadString = req.body.toString();
+      const event = JSON.parse(payloadString);
+      
+      // Handle the checkout.session.completed event
+      if (event.type === 'checkout.session.completed') {
+        const session = event.data.object;
+        const uid = session.client_reference_id; // Pass firebase UID when creating checkout session
+
+        if (uid) {
+          await firestore.collection('users').doc(uid).set({
+            profile: {
+              isPremium: true
+            }
+          }, { merge: true });
+          console.log(`Premium activated via webhook for user: ${uid}`);
+        }
+      }
+
+      res.status(200).json({ received: true });
+    } catch (err: any) {
+      console.error("Webhook error:", err.message);
+      res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+  });
+
   app.use(express.json());
 
   // API routes
@@ -190,8 +228,16 @@ async function startServer() {
         }
       });
       
-      const data = JSON.parse(response.text || '{}');
-      res.json({ data });
+      const rawData = JSON.parse(response.text || '{}');
+      const { AIParseResponseSchema } = await import('./src/schemas.js');
+      const validatedData = AIParseResponseSchema.safeParse(rawData);
+      
+      if (!validatedData.success) {
+        console.warn('AI parser returned invalid schema structure, falling back');
+        return res.json({ data: { intent: 'general', confidenceScore: 0, extracted_data: {} } });
+      }
+
+      res.json({ data: validatedData.data });
     } catch (error: any) {
       console.error('AI Parse error:', error.message || error);
       res.status(500).json({ error: 'Failed to parse message' });

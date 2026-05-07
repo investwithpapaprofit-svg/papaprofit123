@@ -3,6 +3,9 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend
 } from 'recharts';
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
+import { useState } from 'react';
 
 interface DashboardProps {
   profile: UserProfile;
@@ -10,6 +13,29 @@ interface DashboardProps {
 
 export function Dashboard({ profile }: DashboardProps) {
   const COLORS = ['#1a7a4a', '#29a365', '#d4851a', '#e6a845', '#c0392b'];
+  const [isExporting, setIsExporting] = useState(false);
+
+  const exportPDF = async () => {
+    const dashboardElement = document.getElementById('dashboard-export-area');
+    if (!dashboardElement) return;
+
+    setIsExporting(true);
+    try {
+      const canvas = await html2canvas(dashboardElement, { scale: 2 });
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+      
+      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      pdf.save('PapaProfit_Financial_Report.pdf');
+    } catch (err) {
+      console.error("Export PDF failed:", err);
+      alert("Failed to export PDF.");
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   const nw = profile.metrics.netWorth;
   const surplus = profile.metrics.monthlyCashFlow;
@@ -51,9 +77,18 @@ export function Dashboard({ profile }: DashboardProps) {
   };
 
   return (
-    <div className="p-4 bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-6">
+    <div id="dashboard-export-area" className="p-4 bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-6 relative">
+      <div className="absolute top-4 right-4 z-10">
+        <button 
+          onClick={exportPDF}
+          disabled={isExporting}
+          className="bg-[#1a7a4a] text-white px-4 py-2 rounded-lg text-sm font-semibold shadow hover:bg-[#145c37] disabled:opacity-50 transition"
+        >
+          {isExporting ? 'Exporting...' : 'Export Report (PDF)'}
+        </button>
+      </div>
       
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-2 gap-4 mt-8">
         <div className="bg-gray-50 rounded-xl p-4">
           <div className="text-sm text-gray-500 mb-1">Total Net Worth</div>
           <div className="text-3xl font-bold text-gray-900">{fmt(nw)}</div>

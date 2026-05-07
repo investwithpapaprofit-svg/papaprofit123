@@ -7,9 +7,12 @@ import { parser } from './parser';
 import { finance } from './finance';
 import { insights } from './insights';
 import { Portfolio } from './components/Portfolio';
-import { Dashboard } from './components/Dashboard';
-
 import DOMPurify from 'dompurify';
+import { Suspense, lazy } from 'react';
+
+const Dashboard = lazy(() => import('./components/Dashboard').then(module => ({ default: module.Dashboard })));
+const Sidebar = lazy(() => import('./components/Sidebar').then(module => ({ default: module.Sidebar })));
+const PremiumModal = lazy(() => import('./components/PremiumModal').then(module => ({ default: module.PremiumModal })));
 
 const DEFAULT_PROFILE: UserProfile = {
   personal: {},
@@ -47,6 +50,7 @@ export default function App() {
   const [showDashboard, setShowDashboard] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(true);
   const [showPremiumModal, setShowPremiumModal] = useState(false);
+  const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [onboardingStep, setOnboardingStep] = useState(0);
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -353,11 +357,6 @@ export default function App() {
 
   const fhsScore = profile.metrics.financialHealthScore;
   const fhsInfo = finance.fhsLabel(fhsScore);
-  const nw = profile.metrics.netWorth;
-  const surplus = profile.metrics.monthlyCashFlow;
-  const sr = profile.metrics.savingsRate;
-  const dr = profile.metrics.debtToIncomeRatio;
-  const metricsInsights = profile.insights || [];
 
   return (
     <div id="appShell">
@@ -384,74 +383,18 @@ export default function App() {
 
       <div className="app-layout">
         {/* SIDEBAR */}
-        <div className="sidebar">
-          <div className="sidebar-section">
-            <div className="sidebar-title">Financial Health Score</div>
-            <div className="fhs-circle-wrap">
-              <div className={`fhs-circle ${fhsInfo.cls}`}>
-                <div className="fhs-num">{fhsScore !== null ? fhsScore : '--'}</div>
-                <div className="fhs-label">/ 100</div>
-              </div>
-              <div className="fhs-desc">{fhsInfo.label || 'Chat to get your score'}</div>
-            </div>
-          </div>
-
-          <div className="sidebar-section">
-            <div className="sidebar-title">Key Metrics</div>
-            <div className="metric-card">
-              <div className="metric-label">Net Worth</div>
-              <div className={`metric-value ${nw >= 0 ? 'green' : 'red'}`} title={fmt(nw)}>{fhsScore !== null ? fmt(nw) : '--'}</div>
-            </div>
-            <div className="metric-card">
-              <div className="metric-label">Monthly Surplus</div>
-              <div className={`metric-value ${surplus >= 0 ? 'green' : 'red'}`} title={fmt(surplus)}>{finance.totalIncome(profile) > 0 ? fmt(surplus) : '--'}</div>
-            </div>
-            <div className="metric-card">
-              <div className="metric-label">Savings Rate</div>
-              <div className={`metric-value ${sr >= 20 ? 'green' : sr >= 10 ? 'amber' : 'red'}`} title={`${sr.toFixed(2)}%`}>{finance.totalIncome(profile) > 0 ? `${sr.toFixed(1)}%` : '--'}</div>
-            </div>
-            <div className="metric-card">
-              <div className="metric-label">Debt Ratio</div>
-              <div className={`metric-value ${(dr * 100) <= 30 ? 'green' : (dr * 100) <= 50 ? 'amber' : 'red'}`} title={`${(dr * 100).toFixed(2)}%`}>{finance.totalIncome(profile) > 0 ? `${(dr * 100).toFixed(1)}%` : '--'}</div>
-            </div>
-          </div>
-
-          {(profile.goals || []).length > 0 && (
-            <div className="sidebar-section">
-              <div className="sidebar-title">Goals</div>
-              {(profile.goals || []).map((g, i) => {
-                const monthly = finance.goalMonthlyNeeded(g);
-                const pct = g.target > 0 ? Math.round((g.saved / g.target) * 100) : 0;
-                return (
-                  <div key={i} className="goal-card">
-                    <div className="goal-name">{g.name}</div>
-                    <div className="goal-progress"><div className="goal-progress-fill" style={{ width: `${pct}%` }}></div></div>
-                    <div className="goal-detail">{g.target > 0 ? `${fmt(g.target)} target` : 'Set a target amount'} {monthly > 0 ? `· Save ${fmt(monthly)}/mo` : ''}</div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          <div className="sidebar-section">
-            <div className="sidebar-title">Insights</div>
-            <div>
-              {metricsInsights.length > 0 ? metricsInsights.map((n, i) => <div key={i} className="nudge"><span className="nudge-icon">💡</span> {n.title}</div>) : <div style={{ fontSize: '13px', color: '#aaa', padding: '4px' }}>Chat to unlock insights</div>}
-            </div>
-          </div>
-
-          <div className="premium-lock">
-            <p>🔒 Advanced analytics, tax optimisation & investment tracking</p>
-            <button className="premium-btn" onClick={() => setShowPremiumModal(true)}>Upgrade to Pro</button>
-          </div>
-        </div>
+        <Suspense fallback={<div className="sidebar animate-pulse bg-gray-100"></div>}>
+          <Sidebar profile={profile} setShowPremiumModal={setShowPremiumModal} />
+        </Suspense>
 
         {/* MAIN AREA */}
         <div className="main-area flex-1 flex flex-col h-[calc(100dvh-62px)] relative">
           
           {showDashboard ? (
             <div className="flex-1 overflow-y-auto p-4 md:p-8 bg-[#f4f6f4]">
-               <Dashboard profile={profile} />
+               <Suspense fallback={<div className="p-8 text-center text-gray-500">Loading Dashboard...</div>}>
+                 <Dashboard profile={profile} />
+               </Suspense>
             </div>
           ) : (
             <div className="chat-area flex-1 flex flex-col h-full bg-[#f4f6f4]">
@@ -515,6 +458,11 @@ export default function App() {
                   />
                   <button className="send-btn" onClick={() => handleSend()} disabled={isTyping || !input.trim()}>➤</button>
                 </div>
+                <div className="text-center mt-2 px-4 pb-2">
+                  <p className="text-[10px] text-gray-400">
+                    PapaProfit AI can make mistakes. This is <span className="font-semibold text-gray-500">not certified financial advice</span>. Please verify calculations. <button onClick={() => setShowPrivacyPolicy(true)} className="underline hover:text-gray-600">Privacy Policy</button>
+                  </p>
+                </div>
               </div>
             </div>
           )}
@@ -569,77 +517,68 @@ export default function App() {
               <h4>Risk Profile</h4>
               <div className="profile-row"><span className="key">Appetite</span><span className="val">{profile.personal?.riskProfile ? profile.personal.riskProfile.charAt(0).toUpperCase() + profile.personal.riskProfile.slice(1) : 'Not set'}</span></div>
             </div>
+            <div className="profile-section mt-6 pt-4 border-t border-gray-100">
+              <h4 className="text-red-600">Account Settings</h4>
+              <button 
+                onClick={async () => {
+                  if (confirm("Are you sure you want to permanently delete your account and all financial data? This action cannot be undone.")) {
+                    try {
+                      if (user) {
+                        const { deleteUser } = await import('firebase/auth');
+                        const { deleteDoc, doc } = await import('firebase/firestore');
+                        await deleteDoc(doc(db, 'users', user.uid));
+                        await deleteUser(user);
+                        alert("Account deleted.");
+                      }
+                    } catch(err) {
+                      console.error(err);
+                      alert("Please log out and log back in to delete your account.");
+                    }
+                  }
+                }}
+                className="w-full text-center py-2 text-sm text-red-600 font-semibold border border-red-200 bg-red-50 rounded-lg hover:bg-red-100 transition"
+              >
+                Delete Account & Data
+              </button>
+            </div>
           </div>
         </div>
       )}
       {/* PREMIUM MODAL */}
       {showPremiumModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl">
+        <Suspense fallback={null}>
+          <PremiumModal 
+            onClose={() => setShowPremiumModal(false)}
+            user={user}
+            onUpgrade={() => {
+              setProfile(prev => ({ ...prev, isPremium: true }));
+              setShowPremiumModal(false);
+              setChatHistory(prev => [...prev, { role: 'ai', content: '🎉 **Welcome to PapaProfit Pro!** You now have access to personalized investment recommendations and advanced analytics. Let me know if you want to explore your new features!' }]);
+            }}
+          />
+        </Suspense>
+      )}
+      {/* PRIVACY POLICY MODAL */}
+      {showPrivacyPolicy && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl max-h-[80vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xl font-bold text-gray-900">PapaProfit Pro</h3>
-              <button onClick={() => setShowPremiumModal(false)} className="text-gray-400 hover:text-gray-600">✕</button>
+              <h3 className="text-xl font-bold text-gray-900">Privacy Policy</h3>
+              <button onClick={() => setShowPrivacyPolicy(false)} className="text-gray-400 hover:text-gray-600">✕</button>
             </div>
-            
-            <div className="space-y-4 mb-8">
-              <div className="flex items-start gap-3">
-                <div className="w-6 h-6 rounded-full bg-[#e8f5ee] text-[#1a7a4a] flex items-center justify-center shrink-0 mt-0.5">✓</div>
-                <div>
-                  <h4 className="font-semibold text-gray-900">Personalized Investment Strategies</h4>
-                  <p className="text-sm text-gray-500">Get AI-driven recommendations based on your risk profile and goals.</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3">
-                <div className="w-6 h-6 rounded-full bg-[#e8f5ee] text-[#1a7a4a] flex items-center justify-center shrink-0 mt-0.5">✓</div>
-                <div>
-                  <h4 className="font-semibold text-gray-900">Advanced Tax Optimization</h4>
-                  <p className="text-sm text-gray-500">Discover ways to save on taxes legally and efficiently.</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3">
-                <div className="w-6 h-6 rounded-full bg-[#e8f5ee] text-[#1a7a4a] flex items-center justify-center shrink-0 mt-0.5">✓</div>
-                <div>
-                  <h4 className="font-semibold text-gray-900">Live Portfolio Tracking</h4>
-                  <p className="text-sm text-gray-500">Monitor your stocks and assets in real-time.</p>
-                </div>
-              </div>
+            <div className="prose prose-sm text-gray-600">
+              <p><strong>1. Data Collection:</strong> We collect financial data you explicitly provide during chats or onboarding to provide personalized insights.</p>
+              <p><strong>2. AI Processing:</strong> Your data is processed securely through AI engines. We do not use your financial data to train public AI models.</p>
+              <p><strong>3. Storage & Security:</strong> Data is stored securely on Google Cloud Platform (Firestore).</p>
+              <p><strong>4. Deletion:</strong> You may permanently delete your account and all associated data at any time via the Account Settings panel.</p>
+              <p><strong>5. Third-Party Integrations:</strong> Stock search uses Yahoo Finance. Real-time metrics are synced only with authorized APIs.</p>
+              <p className="font-bold text-red-600 mt-4">Disclaimer: PapaProfit is an AI tool and does not provide certified financial advice. Calculations may be inaccurate. Always verify with a certified financial planner.</p>
             </div>
-            
-            <div className="bg-gray-50 rounded-xl p-4 mb-6 border border-gray-100">
-              <div className="flex justify-between items-center mb-2">
-                <span className="font-medium text-gray-900">Pro Plan</span>
-                <span className="font-bold text-xl text-gray-900">₹499<span className="text-sm font-normal text-gray-500">/mo</span></span>
-              </div>
-              <p className="text-xs text-gray-500">Cancel anytime. Billed monthly.</p>
-            </div>
-            
             <button 
-              onClick={async () => {
-                if (!user) return;
-                try {
-                  const idToken = await user.getIdToken();
-                  const res = await fetch('/api/premium/upgrade', {
-                    method: 'POST',
-                    headers: { 
-                      'Content-Type': 'application/json',
-                      'Authorization': `Bearer ${idToken}`
-                    }
-                  });
-                  if (res.ok) {
-                    setProfile(prev => ({ ...prev, isPremium: true }));
-                    setShowPremiumModal(false);
-                    setChatHistory(prev => [...prev, { role: 'ai', content: '🎉 **Welcome to PapaProfit Pro!** You now have access to personalized investment recommendations and advanced analytics. Let me know if you want to explore your new features!' }]);
-                  } else {
-                    alert("Failed to upgrade. Please try again.");
-                  }
-                } catch (e) {
-                  console.error("Upgrade failed:", e);
-                  alert("Upgrade failed. Please try again.");
-                }
-              }}
-              className="w-full bg-[#1a7a4a] text-white py-3 rounded-xl font-semibold hover:bg-[#145c37] transition-colors"
+              onClick={() => setShowPrivacyPolicy(false)}
+              className="mt-6 w-full bg-gray-100 text-gray-800 py-3 rounded-xl font-semibold hover:bg-gray-200 transition-colors"
             >
-              Upgrade Now
+              I Understand
             </button>
           </div>
         </div>

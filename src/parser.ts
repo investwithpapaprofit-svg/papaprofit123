@@ -24,6 +24,9 @@ export const parser = {
       });
 
       if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          throw new Error('Authentication required or session expired. Please log in again.');
+        }
         throw new Error('Network response was not ok');
       }
 

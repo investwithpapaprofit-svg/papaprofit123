@@ -26,6 +26,9 @@ export const insights = {
       });
 
       if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          return "It seems your session has expired. Please refresh the page and log in again to continue.";
+        }
         throw new Error('Network response was not ok');
       }
 
