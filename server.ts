@@ -9,10 +9,12 @@ import fs from 'fs';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
+import Stripe from 'stripe';
 import { finance } from './src/finance';
 
 dotenv.config();
 
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '');
 const yahooFinance = new YahooFinance();
 
 const appUrl = process.env.APP_URL || 'http://localhost:3000/';
@@ -92,7 +94,7 @@ async function startServer() {
 
   // Webhook for premium checkout (MUST be before express.json() for raw body verification)
   app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }), async (req, res) => {
-    // const signature = req.headers['stripe-signature'];
+    const signature = req.headers['stripe-signature'] as string;
     const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
     if (!endpointSecret) {
@@ -101,10 +103,8 @@ async function startServer() {
     }
 
     try {
-      // In production, verify using stripe.webhooks.constructEvent(req.body, signature, endpointSecret)
-      // Here we parse the payload and safely extract the user id
       const payloadString = req.body.toString();
-      const event = JSON.parse(payloadString);
+      const event = stripe.webhooks.constructEvent(payloadString, signature, endpointSecret);
       
       // Handle the checkout.session.completed event
       if (event.type === 'checkout.session.completed') {
@@ -135,23 +135,42 @@ async function startServer() {
     res.json({ status: 'ok' });
   });
 
-  app.post('/api/premium/upgrade', requireAuth, async (req, res) => {
+  app.post('/api/premium/create-checkout-session', requireAuth, async (req, res) => {
     try {
-      if (process.env.ENABLE_MOCK_PREMIUM !== 'true') {
-        return res.status(403).json({ error: 'Direct upgrade is disabled. Please complete the real checkout flow.' });
+      const uid = (req as any).user.uid;
+      
+      if (!process.env.STRIPE_SECRET_KEY) {
+        // Fallback for mock if missing
+        if (process.env.ENABLE_MOCK_PREMIUM === 'true') {
+           await firestore.collection('users').doc(uid).set({ profile: { isPremium: true } }, { merge: true });
+           return res.json({ url: '/?mock_success=true' });
+        }
+        return res.status(500).json({ error: 'Stripe is not configured' });
       }
 
-      const uid = (req as any).user.uid;
-      await firestore.collection('users').doc(uid).set({
-        profile: {
-          isPremium: true
-        }
-      }, { merge: true });
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ['card'],
+        line_items: [{
+          price_data: {
+            currency: 'inr',
+            unit_amount: 49900,
+            product_data: {
+              name: 'PapaProfit Pro Subscription',
+            },
+            recurring: { interval: 'month' }
+          },
+          quantity: 1,
+        }],
+        mode: 'subscription',
+        client_reference_id: uid,
+        success_url: `${appUrl}?checkout=success`,
+        cancel_url: `${appUrl}?checkout=canceled`,
+      });
 
-      res.json({ success: true });
+      res.json({ url: session.url });
     } catch (error) {
-      console.error('Premium upgrade error:', error);
-      res.status(500).json({ error: 'Failed to upgrade' });
+      console.error('Checkout session error:', error);
+      res.status(500).json({ error: 'Failed to create checkout session' });
     }
   });
 

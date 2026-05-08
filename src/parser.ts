@@ -17,8 +17,9 @@ export const parser = {
     try {
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: `Parse financial input: "${msg}"\nCurrent profile limits clarification: If unclear whether user means per month or year, add clarificationNeeded: true and provide clarificationMessage. Extract numeric values completely. Map intents to: ['income', 'expense', 'subscription', 'loan', 'asset', 'portfolio', 'goal', 'general']. If multiple apply, pick the primary one or general. Output strict JSON fitting the schema.`,
+        contents: [{ role: 'user', parts: [{ text: msg }] }],
         config: {
+          systemInstruction: `Parse financial input.\n\nCurrent profile limits clarification: If unclear whether user means per month or year, add clarificationNeeded: true and provide clarificationMessage. Extract numeric values completely. Map intents to: ['income', 'expense', 'subscription', 'loan', 'asset', 'portfolio', 'goal', 'general']. If multiple apply, pick the primary one or general. Output strict JSON fitting the schema.`,
           responseMimeType: 'application/json',
           responseSchema: {
             type: Type.OBJECT,
@@ -75,7 +76,7 @@ export const parser = {
       intent = data.intent || 'general';
       confidence = data.confidenceScore || 0.5;
       const extracted = data.extracted_data || {};
-      const clarificationMsg = data.clarificationNeeded || confidence < 0.6 ? data.clarificationMessage || "Could you clarify the exact amounts you're referring to?" : undefined;
+      const clarificationMsg = data.clarificationNeeded && data.clarificationMessage ? data.clarificationMessage : undefined;
 
       if (clarificationMsg) {
          return { intent: 'clarification', confidence, updates: [], newProfile: currentProfile, clarificationMsg };

@@ -12,11 +12,7 @@ service cloud.firestore {
     }
     
     function isAdmin() {
-      return isAuthenticated() && (
-        request.auth.token.admin == true ||
-        (request.auth.token.email == "investwithpapaprofit@gmail.com" && request.auth.token.email_verified == true) ||
-        (request.auth.token.email == "harshitvannam@gmail.com" && request.auth.token.email_verified == true)
-      );
+      return isAuthenticated() && request.auth.token.admin == true;
     }
 
     function isSafeProfileWrite() {

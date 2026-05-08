@@ -50,7 +50,7 @@ export function PremiumModal({ onUpgrade, onClose, user }: PremiumModalProps) {
              if (!user) return;
              try {
                const idToken = await user.getIdToken();
-               const res = await fetch('/api/premium/upgrade', {
+               const res = await fetch('/api/premium/create-checkout-session', {
                  method: 'POST',
                  headers: { 
                    'Content-Type': 'application/json',
@@ -58,7 +58,14 @@ export function PremiumModal({ onUpgrade, onClose, user }: PremiumModalProps) {
                  }
                });
                if (res.ok) {
-                 onUpgrade();
+                 const { url } = await res.json();
+                 if (url) {
+                   if (url.includes('mock_success')) {
+                      onUpgrade();
+                   } else {
+                      window.location.href = url;
+                   }
+                 }
                } else {
                  alert("Failed to upgrade. Please try again.");
                }

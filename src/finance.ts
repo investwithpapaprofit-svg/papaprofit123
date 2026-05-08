@@ -124,8 +124,9 @@ export const finance = {
     return Math.max(0, Math.min(100, Math.round(score)));
   },
 
-  fhsLabel(score: number | null): { label: string; cls: string } {
-    if (score === null || score === 0) return { label: 'No data yet', cls: '' };
+  fhsLabel(score: number | null | undefined): { label: string; cls: string } {
+    if (score === null || score === undefined) return { label: 'No data yet', cls: '' };
+    if (score === 0) return { label: 'Critical', cls: 'bad' };
     if (score >= 80) return { label: 'Excellent', cls: 'good' };
     if (score >= 60) return { label: 'Good', cls: 'good' };
     if (score >= 40) return { label: 'Average', cls: 'ok' };
