@@ -19,7 +19,11 @@ const yahooFinance = new YahooFinance();
 const appUrl = process.env.APP_URL || 'http://localhost:3000/';
 console.log('APP_URL:', appUrl);
 
-const ai = new GoogleGenAI({ apiKey: process.env.GOOGLE_GENAI_API_KEY || process.env.GEMINI_API_KEY || '' });
+let apiKey = process.env.GOOGLE_GENAI_API_KEY || process.env.GEMINI_API_KEY || undefined;
+
+// Optional: Fallback to avoid complete crash if key is entirely missing,
+// though SDK handles undefined by looking up GEMINI_API_KEY automatically.
+const ai = new GoogleGenAI({ apiKey: apiKey });
 
 let firestore: any;
 
@@ -72,14 +76,17 @@ async function startServer() {
   // Security Middlewares
   app.use(helmet({
     crossOriginEmbedderPolicy: false,
+    xFrameOptions: false,
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'", "https://*.googleapis.com", "https://*.firebaseio.com", "wss://*.firebaseio.com"],
-        scriptSrc: ["'self'", "https://*.googleapis.com", "https://*.firebase.com"],
+        scriptSrc: process.env.NODE_ENV === 'production' 
+          ? ["'self'", "https://*.googleapis.com", "https://*.firebase.com", "https://*.firebaseapp.com"]
+          : ["'self'", "'unsafe-inline'", "https://*.googleapis.com", "https://*.firebase.com", "https://*.firebaseapp.com"],
         styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
         imgSrc: ["'self'", "data:", "blob:", "https://*.google.com", "https://*.googleusercontent.com"],
         fontSrc: ["'self'", "https://fonts.gstatic.com"],
-        frameAncestors: ["'self'", "https://*.run.app"], // allow iframe embedding in app preview
+        frameAncestors: ["'self'", "https://*.run.app", "https://*.google.com", "https://*.aistudio.google.com"],
       }
     }
   }));
@@ -251,8 +258,9 @@ async function startServer() {
 
       res.json({ data: validatedData.data });
     } catch (error: any) {
-      console.error('AI Parse error:', error.message || error);
-      res.status(500).json({ error: 'Failed to parse message' });
+      const errMsg = error instanceof Error ? error.message : String(error);
+      console.error('AI Parse error:', errMsg.includes('API key') ? 'Invalid or missing API key' : 'Failed to parse message');
+      res.json({ data: { intent: 'general', confidenceScore: 0, extracted_data: {} } });
     }
   });
 
@@ -263,8 +271,8 @@ async function startServer() {
           role: z.enum(['user', 'model']),
           parts: z.array(z.object({
             text: z.string().max(2000)
-          })).min(1).max(5)
-        })).min(1).max(20),
+          })).min(1).max(2)
+        })).min(1).max(10),
         parsedData: z.any().optional(),
         onboardingStep: z.number().optional()
       });
@@ -350,8 +358,9 @@ async function startServer() {
       const text = response.text || 'Sorry, I had trouble generating a response.';
       res.json({ text });
     } catch (error: any) {
-      console.error('AI Respond error:', error.message || error);
-      res.status(500).json({ error: 'Failed to generate response' });
+      const errMsg = error instanceof Error ? error.message : String(error);
+      console.error('AI Respond error:', errMsg.includes('API key') ? 'Invalid or missing API key' : 'Failed to generate response');
+      res.json({ text: "I'm having a little trouble thinking of a response right now due to a network hiccup. Could you try asking that again?" });
     }
   });
 
