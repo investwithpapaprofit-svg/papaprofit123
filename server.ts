@@ -14,7 +14,7 @@ import { finance } from './src/finance';
 
 dotenv.config();
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '');
+const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null as unknown as Stripe;
 const yahooFinance = new YahooFinance();
 
 const appUrl = process.env.APP_URL || 'http://localhost:3000/';

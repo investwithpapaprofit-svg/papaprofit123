@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "tsx server.ts",
     "build": "vite build && npm run build:server",
-    "build:server": "esbuild server.ts --bundle --platform=node --outfile=dist/server.js --format=esm --external:firebase-admin --external:yahoo-finance2 --external:vite --external:stripe --external:helmet --external:express-rate-limit --external:zod",
+    "build:server": "esbuild server.ts --bundle --platform=node --outfile=dist/server.js --format=esm --packages=external",
     "start": "node dist/server.js",
     "preview": "vite preview",
     "clean": "rimraf dist",
