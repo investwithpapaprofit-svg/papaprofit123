@@ -1,6 +1,9 @@
 import { UserProfile } from './types';
 import { finance } from './finance';
 import { auth } from './firebase';
+import { GoogleGenAI, Type } from '@google/genai';
+
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 export const parser = {
   async parse(msg: string, currentProfile: UserProfile): Promise<{ intent: string; confidence: number; updates: string[]; newProfile: UserProfile, clarificationMsg?: string }> {
@@ -12,26 +15,62 @@ export const parser = {
     const fmt = (n: number) => `₹${n.toLocaleString('en-IN')}`;
 
     try {
-      const token = await auth.currentUser?.getIdToken();
-      
-      const response = await fetch('/api/ai/parse', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-        },
-        body: JSON.stringify({ msg })
-      });
-
-      if (!response.ok) {
-        if (response.status === 401 || response.status === 403) {
-          throw new Error('Authentication required or session expired. Please log in again.');
+      const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: `Parse financial input: "${msg}"\nCurrent profile limits clarification: If unclear whether user means per month or year, add clarificationNeeded: true and provide clarificationMessage. Extract numeric values completely. Map intents to: ['income', 'expense', 'subscription', 'loan', 'asset', 'portfolio', 'goal', 'general']. If multiple apply, pick the primary one or general. Output strict JSON fitting the schema.`,
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              intent: { type: Type.STRING },
+              confidenceScore: { type: Type.NUMBER },
+              clarificationNeeded: { type: Type.BOOLEAN },
+              clarificationMessage: { type: Type.STRING },
+              extracted_data: {
+                type: Type.OBJECT,
+                properties: {
+                  personal: {
+                    type: Type.OBJECT,
+                    properties: { name: { type: Type.STRING }, age: { type: Type.NUMBER }, riskProfile: { type: Type.STRING } }
+                  },
+                  incomeSources: {
+                    type: Type.ARRAY,
+                    items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, value: { type: Type.NUMBER } } }
+                  },
+                  expenses: {
+                    type: Type.ARRAY,
+                    items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, value: { type: Type.NUMBER }, category: { type: Type.STRING } } }
+                  },
+                  subscriptions: {
+                    type: Type.ARRAY,
+                    items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, cost: { type: Type.NUMBER }, billingCycle: { type: Type.STRING } } }
+                  },
+                  loans: {
+                    type: Type.ARRAY,
+                    items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, amount: { type: Type.NUMBER }, rate: { type: Type.NUMBER }, emi: { type: Type.NUMBER } } }
+                  },
+                  assets: {
+                    type: Type.ARRAY,
+                    items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, value: { type: Type.NUMBER }, type: { type: Type.STRING }, mortgageable: { type: Type.BOOLEAN } } }
+                  },
+                  portfolio: {
+                    type: Type.ARRAY,
+                    items: { type: Type.OBJECT, properties: { symbol: { type: Type.STRING }, name: { type: Type.STRING }, quantity: { type: Type.NUMBER }, averageBuyPrice: { type: Type.NUMBER }, assetType: { type: Type.STRING } } }
+                  },
+                  goals: {
+                    type: Type.ARRAY,
+                    items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, target: { type: Type.NUMBER }, months: { type: Type.NUMBER }, type: { type: Type.STRING } } }
+                  }
+                }
+              }
+            }
+          }
         }
-        const errText = await response.text();
-        throw new Error(`API Error ${response.status}: ${errText}`);
-      }
-
-      const { data } = await response.json();
+      });
+      
+      const rawText = response.text || "{}";
+      const data = JSON.parse(rawText);
       
       intent = data.intent || 'general';
       confidence = data.confidenceScore || 0.5;

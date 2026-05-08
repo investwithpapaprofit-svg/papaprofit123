@@ -8,7 +8,6 @@ import { getFirestore } from 'firebase-admin/firestore';
 import fs from 'fs';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
-import { GoogleGenAI, Type, Schema } from '@google/genai';
 import { z } from 'zod';
 import { finance } from './src/finance';
 
@@ -18,12 +17,6 @@ const yahooFinance = new YahooFinance();
 
 const appUrl = process.env.APP_URL || 'http://localhost:3000/';
 console.log('APP_URL:', appUrl);
-
-let apiKey = process.env.GOOGLE_GENAI_API_KEY || process.env.GEMINI_API_KEY || undefined;
-
-// Optional: Fallback to avoid complete crash if key is entirely missing,
-// though SDK handles undefined by looking up GEMINI_API_KEY automatically.
-const ai = new GoogleGenAI({ apiKey: apiKey });
 
 let firestore: any;
 
@@ -191,178 +184,12 @@ async function startServer() {
     }
   });
 
-  app.post('/api/ai/parse', requireAuth, async (req, res) => {
-    try {
-      const parseSchema = z.object({ msg: z.string().min(1).max(2000) });
-      const parsedReq = parseSchema.safeParse(req.body);
-      
-      if (!parsedReq.success) {
-        return res.status(400).json({ error: 'Message is required and must be a string' });
-      }
-      
-      const { msg } = parsedReq.data;
 
-      const schema: Schema = {
-        type: Type.OBJECT,
-        properties: {
-          intent: { type: Type.STRING, description: "Primary intent: income, expense, asset, loan, goal, portfolio, personal, clarification, or general." },
-          confidenceScore: { type: Type.NUMBER, description: "Confidence score from 0.0 to 1.0. Lower it if inputs are ambiguous or missing key info." },
-          clarificationNeeded: { type: Type.BOOLEAN, description: "Set to true if you cannot confidently extract an exact number (e.g. they provided a huge range or entirely ambiguous text like 'I have money')." },
-          clarificationMessage: { type: Type.STRING, description: "If clarification is needed, write a short question asking the user to specify (e.g., 'Do you have an exact estimate for your gold assets?')." },
-          extracted_data: {
-            type: Type.OBJECT,
-            properties: {
-              personal: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, age: { type: Type.NUMBER }, riskProfile: { type: Type.STRING, enum: ['conservative', 'moderate', 'aggressive'] } } },
-              incomeSources: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, value: { type: Type.NUMBER } } } },
-              expenses: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, value: { type: Type.NUMBER }, category: { type: Type.STRING } } } },
-              subscriptions: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, cost: { type: Type.NUMBER }, billingCycle: { type: Type.STRING, enum: ['monthly', 'yearly'] } } } },
-              loans: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, amount: { type: Type.NUMBER }, rate: { type: Type.NUMBER }, emi: { type: Type.NUMBER } } } },
-              assets: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, type: { type: Type.STRING, enum: ['property', 'gold', 'cash', 'vehicle', 'other'] }, value: { type: Type.NUMBER }, mortgageable: { type: Type.BOOLEAN } } } },
-              portfolio: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { symbol: { type: Type.STRING }, name: { type: Type.STRING }, assetType: { type: Type.STRING, enum: ['stock', 'etf', 'mutual_fund', 'crypto', 'bond', 'other'] }, quantity: { type: Type.NUMBER }, averageBuyPrice: { type: Type.NUMBER } } } },
-              goals: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, target: { type: Type.NUMBER }, months: { type: Type.NUMBER }, type: { type: Type.STRING } } } }
-            }
-          }
-        }
-      };
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.0-flash',
-        contents: `You are an advanced financial data extraction engine. Analyze the user message and extract all explicit and implied financial entities.
-        
-        RULES:
-        - Income/Expenses are ALWAYS MONTHLY. Average out variable incomes.
-        - Handle ranges properly: If a user says "40-50k", extract 45000 as the average. If the range is too broad, set clarificationNeeded to true.
-        - Assets/Loans are ALWAYS TOTAL CURRENT BALANCE.
-        - Handle numerical shorthands: 'k' -> 1000, 'lakh' -> 100000, 'cr' -> 10000000.
-        - Parse Multiple Entities: Extract EVERY entity mentioned. 
-        - If the message is completely ambiguous or missing critical amounts for their main point, set clarificationNeeded to true and write a clarificationMessage.
-        - Use confidence score to indicate how sure you are about the extracted numbers and intents.
-        - Only output valid JSON matching the schema.
-        
-        Message: "${msg}"`,
-        config: {
-          responseMimeType: 'application/json',
-          responseSchema: schema,
-          temperature: 0.1
-        }
-      });
-      
-      const rawData = JSON.parse(response.text || '{}');
-      const { AIParseResponseSchema } = await import('./src/schemas.js');
-      const validatedData = AIParseResponseSchema.safeParse(rawData);
-      
-      if (!validatedData.success) {
-        console.warn('AI parser returned invalid schema structure, falling back');
-        return res.json({ data: { intent: 'general', confidenceScore: 0, extracted_data: {} } });
-      }
+  // AI Parse and AI Respond endpoints have been moved to the client (src/parser.ts and src/insights.ts)
+  
 
-      res.json({ data: validatedData.data });
-    } catch (error: any) {
-      const errMsg = error instanceof Error ? error.message : String(error);
-      console.error('AI Parse error:', errMsg.includes('API key') ? 'Invalid or missing API key' : 'Failed to parse message');
-      res.json({ data: { intent: 'general', confidenceScore: 0, extracted_data: {} } });
-    }
-  });
 
-  app.post('/api/ai/respond', requireAuth, async (req, res) => {
-    try {
-      const respondSchema = z.object({
-        messages: z.array(z.object({
-          role: z.enum(['user', 'model']),
-          parts: z.array(z.object({
-            text: z.string().max(2000)
-          })).min(1).max(2)
-        })).min(1).max(10),
-        parsedData: z.any().optional(),
-        onboardingStep: z.number().optional()
-      });
-      const parsedReq = respondSchema.safeParse(req.body);
-      
-      if (!parsedReq.success) {
-        return res.status(400).json({ error: 'Invalid messages format' });
-      }
-
-      const { messages, parsedData, onboardingStep } = parsedReq.data;
-      
-      const uid = (req as any).user.uid;
-      const docSnap = await firestore.collection('users').doc(uid).get();
-      const profile = docSnap.exists ? (docSnap.data()?.profile || {}) : {};
-      
-      const fmt = (n: number) => `₹${(n||0).toLocaleString('en-IN')}`;
-      const fhsScore = profile.metrics?.financialHealthScore || 0;
-      const fhsInfo = finance.fhsLabel(fhsScore);
-
-      const onboardingCtx = onboardingStep !== undefined && onboardingStep >= 0 && onboardingStep < ONBOARDING_QUESTIONS.length
-        ? `\nONBOARDING STATUS: The user is currently in a guided setup. The next thing we need to know is: "${ONBOARDING_QUESTIONS[onboardingStep]}". 
-           If the user is just chatting or being casual (like saying "hi"), acknowledge them warmly and then naturally ask the next onboarding question. 
-           DO NOT be a robot. Be a real advisor.`
-        : "";
-
-      const systemCtx = `You are PapaProfit — a sharp, warm, and direct personal financial advisor for Indian users. 
-      You act as a world-class AI financial copilot.
-
-  CRITICAL: 
-  - Proactive, not just reactive. Give insight based on the numbers, do not just parrot data back to them.
-  - If the user gave you data, confirm what you updated in their profile, and what the impact is.
-  - If they are frustrated or just chatting, be empathetic and conversational.
-  ${onboardingCtx}
-
-  FORMATTING RULES:
-  When providing a full financial breakdown, structure your response EXACTLY like this:
-  **Summary:**
-  (1-2 lines summarizing their overall financial stance - e.g. "You have moderate income with high expenses and existing debt.")
-
-  **Insights:**
-  - (Point 1: highly specific, data-driven insight)
-  - (Point 2: another sharp insight)
-
-  **Next Action:**
-  ${finance.getNextBestAction(profile)}
-
-  - Keep responses focused.
-  - Use ₹ symbol and Indian number format (lakh, crore).
-  - Be hyper-specific and actionable.
-
-  CLIENT PROFILE:
-  Name: ${profile.personal?.name || 'Unknown'}
-  Age: ${profile.personal?.age || 'Unknown'}
-  Risk Profile: ${profile.personal?.riskProfile || 'Unknown'}
-
-  METRICS:
-  Monthly Income: ${fmt(finance.totalIncome(profile))}
-  Monthly Expenses: ${fmt(finance.totalExpenses(profile))}
-  EMI: ${fmt(finance.totalEMI(profile))}
-  Total Loans: ${fmt(finance.totalLiabilities(profile))}
-  Total Assets: ${fmt(finance.totalAssets(profile))}
-
-  ADVANCED METRICS:
-  Net worth: ${fmt(profile.metrics?.netWorth)}
-  Monthly surplus: ${fmt(profile.metrics?.monthlyCashFlow)}
-  Savings rate: ${(profile.metrics?.savingsRate || 0).toFixed(1)}%
-  Financial Health Score: ${fhsScore > 0 ? fhsScore + '/100 (' + fhsInfo.label + ')' : 'Not enough data yet'}
-
-  CURRENT COPILOT ANALYSIS:
-  - Extracted: ${parsedData?.updates?.length > 0 ? parsedData.updates.join(', ') : 'No new hard data found.'}
-  - Parsing Intent: ${parsedData?.intent || 'general'}`;
-
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.0-flash',
-        contents: messages,
-        config: {
-          systemInstruction: systemCtx,
-          temperature: 0.7,
-          maxOutputTokens: 600
-        }
-      });
-      
-      const text = response.text || 'Sorry, I had trouble generating a response.';
-      res.json({ text });
-    } catch (error: any) {
-      const errMsg = error instanceof Error ? error.message : String(error);
-      console.error('AI Respond error:', errMsg.includes('API key') ? 'Invalid or missing API key' : 'Failed to generate response');
-      res.json({ text: "I'm having a little trouble thinking of a response right now due to a network hiccup. Could you try asking that again?" });
-    }
-  });
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== 'production') {
