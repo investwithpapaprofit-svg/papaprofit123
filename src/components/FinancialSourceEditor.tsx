@@ -9,7 +9,7 @@ interface FinancialSourceEditorProps {
   title: string;
   sources: FinancialSourceItem[];
   onUpdate: (newSources: FinancialSourceItem[]) => void;
-  type: 'income' | 'expense';
+  type: 'income' | 'expense' | 'assets' | 'loans';
 }
 
 export function FinancialSourceEditor({ title, sources, onUpdate, type }: FinancialSourceEditorProps) {

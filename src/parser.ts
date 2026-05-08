@@ -27,7 +27,8 @@ export const parser = {
         if (response.status === 401 || response.status === 403) {
           throw new Error('Authentication required or session expired. Please log in again.');
         }
-        throw new Error('Network response was not ok');
+        const errText = await response.text();
+        throw new Error(`API Error ${response.status}: ${errText}`);
       }
 
       const { data } = await response.json();

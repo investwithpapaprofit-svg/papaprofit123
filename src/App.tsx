@@ -10,6 +10,7 @@ import { Portfolio } from './components/Portfolio';
 import DOMPurify from 'dompurify';
 import { Suspense, lazy } from 'react';
 
+import { FinancialSourceEditor } from './components/FinancialSourceEditor';
 const Dashboard = lazy(() => import('./components/Dashboard').then(module => ({ default: module.Dashboard })));
 const Sidebar = lazy(() => import('./components/Sidebar').then(module => ({ default: module.Sidebar })));
 const PremiumModal = lazy(() => import('./components/PremiumModal').then(module => ({ default: module.PremiumModal })));
@@ -311,7 +312,7 @@ export default function App() {
       setOnboardingStep(0);
     } else {
       // Use AI for everything now
-      reply = await insights.generateResponse(userMsg, parsed, updatedProfile, newHistory, onboardingStep, ONBOARDING_QUESTIONS);
+      reply = await insights.generateResponse(userMsg, parsed, updatedProfile, newHistory, onboardingStep);
       
       // If the user provided data that matched the current onboarding step, we increment it
       if (parsed.updates.length > 0 && !profile.onboardingCompleted) {
@@ -474,27 +475,55 @@ export default function App() {
         <div id="profilePanel" style={{ display: 'block' }}>
           <h3>Financial Profile <button className="close-btn" onClick={() => setShowProfile(false)}>✕</button></h3>
           <div>
-            <div className="profile-section">
-              <h4>Income</h4>
-              {profile.income.map((inc, i) => <div key={i} className="profile-row"><span className="key">{inc.name}</span><span className="val">{fmt((inc as any).value || (inc as any).amount)}</span></div>)}
-              <div className="profile-row mt-2 font-bold"><span className="key">Total Monthly Income</span><span className="val">{fmt(finance.totalIncome(profile))}</span></div>
-            </div>
+            <FinancialSourceEditor 
+              title="Income"
+              type="income"
+              sources={profile.income.map(i => ({ name: i.name, value: (i as any).value || (i as any).amount }))}
+              onUpdate={async (sources) => {
+                const newProfile = { ...profile, income: sources };
+                finance.recalculateMetrics(newProfile);
+                setProfile(newProfile);
+                await saveProfile(newProfile);
+              }}
+            />
+            <div className="profile-row font-bold mb-4 px-3"><span className="key">Total Monthly</span><span className="val">{fmt(finance.totalIncome(profile))}</span></div>
             
-            <div className="profile-section">
-              <h4>Expenses</h4>
-              {profile.expenses.map((exp, i) => <div key={i} className="profile-row"><span className="key">{exp.name}</span><span className="val">{fmt((exp as any).value || (exp as any).amount)}</span></div>)}
-              <div className="profile-row mt-2 font-bold"><span className="key">Total Monthly Expenses</span><span className="val">{fmt(finance.totalExpenses(profile))}</span></div>
-            </div>
+            <FinancialSourceEditor 
+              title="Expenses"
+              type="expense"
+              sources={profile.expenses.map(i => ({ name: i.name, value: (i as any).value || (i as any).amount }))}
+              onUpdate={async (sources) => {
+                const newProfile = { ...profile, expenses: sources };
+                finance.recalculateMetrics(newProfile);
+                setProfile(newProfile);
+                await saveProfile(newProfile);
+              }}
+            />
+            <div className="profile-row font-bold mb-4 px-3"><span className="key">Total Monthly</span><span className="val">{fmt(finance.totalExpenses(profile))}</span></div>
             
             <div className="profile-section">
               <div className="profile-row"><span className="key">Monthly Savings (Surplus)</span><span className="val">{fmt(profile.metrics.monthlyCashFlow)}</span></div>
             </div>
             
+            <FinancialSourceEditor 
+              title={`Assets (${fmt(finance.totalAssets(profile))})`}
+              type="assets"
+              sources={profile.assets.map(a => ({ name: `${a.name} (${a.type})`, value: a.value }))}
+              onUpdate={async (sources) => {
+                const newAssets = sources.map(s => {
+                  const existing = profile.assets.find(a => `${a.name} (${a.type})` === s.name);
+                  if (existing) return { ...existing, value: s.value };
+                  return { name: s.name, type: 'other' as const, value: s.value };
+                });
+                const newProfile = { ...profile, assets: newAssets };
+                finance.recalculateMetrics(newProfile);
+                setProfile(newProfile);
+                await saveProfile(newProfile);
+              }}
+            />
+            {finance.totalAssets(profile) === 0 && profile.portfolio.length === 0 && <div className="profile-row mb-4"><span className="key" style={{ color: '#ccc' }}>None added yet</span></div>}
+            
             <div className="profile-section">
-              <h4>Assets ({fmt(finance.totalAssets(profile))})</h4>
-              {profile.assets.map((a, i) => <div key={i} className="profile-row"><span className="key">{a.name} ({a.type})</span><span className="val">{fmt(a.value)}</span></div>)}
-              {finance.totalAssets(profile) === 0 && profile.portfolio.length === 0 && <div className="profile-row"><span className="key" style={{ color: '#ccc' }}>None added yet</span></div>}
-              
               <div className="mt-4">
                 <Portfolio profile={profile} onUpdate={(newProfile) => {
                   finance.recalculateMetrics(newProfile);
@@ -503,11 +532,22 @@ export default function App() {
                 }} />
               </div>
             </div>
-            <div className="profile-section">
-              <h4>Liabilities ({fmt(finance.totalLiabilities(profile))})</h4>
-              {profile.loans.map((l, i) => <div key={i} className="profile-row"><span className="key">{l.name}</span><span className="val" style={{ color: '#c0392b' }}>{fmt(l.amount)}{l.rate ? ` @ ${l.rate}%` : ''}</span></div>)}
-              {profile.loans.length === 0 && <div className="profile-row"><span className="key" style={{ color: '#ccc' }}>None added yet</span></div>}
-            </div>
+            <FinancialSourceEditor 
+              title={`Liabilities (${fmt(finance.totalLiabilities(profile))})`}
+              type="loans"
+              sources={profile.loans.map(l => ({ name: l.name, value: l.amount }))}
+              onUpdate={async (sources) => {
+                const newLoans = sources.map(s => {
+                  const existing = profile.loans.find(l => l.name === s.name);
+                  if (existing) return { ...existing, amount: s.value };
+                  return { name: s.name, amount: s.value, emi: 0, rate: 0 }; // Assume 0 EMI for newly added via quick editor
+                });
+                const newProfile = { ...profile, loans: newLoans };
+                finance.recalculateMetrics(newProfile);
+                setProfile(newProfile);
+                await saveProfile(newProfile);
+              }}
+            />
             <div className="profile-section">
               <h4>Goals</h4>
               {(profile.goals || []).map((g, i) => <div key={i} className="profile-row"><span className="key">{g.name}</span><span className="val">{g.target > 0 ? fmt(g.target) : 'No target set'}</span></div>)}

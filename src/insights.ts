@@ -3,7 +3,7 @@ import { finance } from './finance';
 import { auth } from './firebase';
 
 export const insights = {
-  async generateResponse(userMsg: string, parsedData: any, profile: UserProfile, chatHistory: { role: string; content: string }[], onboardingStep?: number, onboardingQuestions?: string[]): Promise<string> {
+  async generateResponse(userMsg: string, parsedData: any, profile: UserProfile, chatHistory: { role: string; content: string }[], onboardingStep?: number): Promise<string> {
     let messages = chatHistory.slice(-6).map((h: any) => ({
       role: h.role === 'user' ? 'user' : 'model',
       parts: [{ text: h.content }]
@@ -22,14 +22,15 @@ export const insights = {
           'Content-Type': 'application/json',
           ...(token ? { 'Authorization': `Bearer ${token}` } : {})
         },
-        body: JSON.stringify({ messages, parsedData, onboardingStep, onboardingQuestions })
+        body: JSON.stringify({ messages, parsedData, onboardingStep })
       });
 
       if (!response.ok) {
         if (response.status === 401 || response.status === 403) {
           return "It seems your session has expired. Please refresh the page and log in again to continue.";
         }
-        throw new Error('Network response was not ok');
+        const errText = await response.text();
+        throw new Error(`API Error ${response.status}: ${errText}`);
       }
 
       const data = await response.json();

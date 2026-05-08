@@ -53,6 +53,18 @@ const requireAuth = async (req: express.Request, res: express.Response, next: ex
   }
 };
 
+const ONBOARDING_QUESTIONS = [
+  "**[Step 1/9]** Hi! I'm your PapaProfit AI. Let's get your profile set up. First, what's your **monthly income**?",
+  "**[Step 2/9]** Is your income **fixed or variable**?",
+  "**[Step 3/9]** How much do you **spend** monthly on expenses?",
+  "**[Step 4/9]** How much **savings** do you currently have?",
+  "**[Step 5/9]** Do you have any **loans**? If yes, how much?",
+  "**[Step 6/9]** How much **EMI** do you pay monthly?",
+  "**[Step 7/9]** Do you **invest** in stocks or gold? If so, roughly how much?",
+  "**[Step 8/9]** What is your main **financial goal**? (e.g. buy a house, retire early)",
+  "**[Step 9/9]** Finally, do you currently track your expenses and invest regularly?"
+];
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
@@ -63,11 +75,11 @@ async function startServer() {
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'", "https://*.googleapis.com", "https://*.firebaseio.com", "wss://*.firebaseio.com"],
-        scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://*.googleapis.com", "https://*.firebase.com"],
+        scriptSrc: ["'self'", "https://*.googleapis.com", "https://*.firebase.com"],
         styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
         imgSrc: ["'self'", "data:", "blob:", "https://*.google.com", "https://*.googleusercontent.com"],
         fontSrc: ["'self'", "https://fonts.gstatic.com"],
-        frameAncestors: ["*"], // allow iframe embedding in app preview
+        frameAncestors: ["'self'", "https://*.run.app"], // allow iframe embedding in app preview
       }
     }
   }));
@@ -174,7 +186,7 @@ async function startServer() {
 
   app.post('/api/ai/parse', requireAuth, async (req, res) => {
     try {
-      const parseSchema = z.object({ msg: z.string().min(1) });
+      const parseSchema = z.object({ msg: z.string().min(1).max(2000) });
       const parsedReq = parseSchema.safeParse(req.body);
       
       if (!parsedReq.success) {
@@ -207,7 +219,7 @@ async function startServer() {
       };
 
       const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
+        model: 'gemini-2.0-flash',
         contents: `You are an advanced financial data extraction engine. Analyze the user message and extract all explicit and implied financial entities.
         
         RULES:
@@ -247,18 +259,22 @@ async function startServer() {
   app.post('/api/ai/respond', requireAuth, async (req, res) => {
     try {
       const respondSchema = z.object({
-        messages: z.array(z.any()).min(1),
+        messages: z.array(z.object({
+          role: z.enum(['user', 'model']),
+          parts: z.array(z.object({
+            text: z.string().max(2000)
+          })).min(1).max(5)
+        })).min(1).max(20),
         parsedData: z.any().optional(),
-        onboardingStep: z.number().optional(),
-        onboardingQuestions: z.array(z.string()).optional()
+        onboardingStep: z.number().optional()
       });
       const parsedReq = respondSchema.safeParse(req.body);
       
       if (!parsedReq.success) {
-        return res.status(400).json({ error: 'Messages array is required' });
+        return res.status(400).json({ error: 'Invalid messages format' });
       }
 
-      const { messages, parsedData, onboardingStep, onboardingQuestions } = parsedReq.data;
+      const { messages, parsedData, onboardingStep } = parsedReq.data;
       
       const uid = (req as any).user.uid;
       const docSnap = await firestore.collection('users').doc(uid).get();
@@ -268,8 +284,8 @@ async function startServer() {
       const fhsScore = profile.metrics?.financialHealthScore || 0;
       const fhsInfo = finance.fhsLabel(fhsScore);
 
-      const onboardingCtx = onboardingStep !== undefined && onboardingQuestions && onboardingStep < onboardingQuestions.length
-        ? `\nONBOARDING STATUS: The user is currently in a guided setup. The next thing we need to know is: "${onboardingQuestions[onboardingStep]}". 
+      const onboardingCtx = onboardingStep !== undefined && onboardingStep >= 0 && onboardingStep < ONBOARDING_QUESTIONS.length
+        ? `\nONBOARDING STATUS: The user is currently in a guided setup. The next thing we need to know is: "${ONBOARDING_QUESTIONS[onboardingStep]}". 
            If the user is just chatting or being casual (like saying "hi"), acknowledge them warmly and then naturally ask the next onboarding question. 
            DO NOT be a robot. Be a real advisor.`
         : "";
@@ -322,7 +338,7 @@ async function startServer() {
   - Parsing Intent: ${parsedData?.intent || 'general'}`;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
+        model: 'gemini-2.0-flash',
         contents: messages,
         config: {
           systemInstruction: systemCtx,
