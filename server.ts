@@ -205,11 +205,6 @@ async function startServer() {
 
 
 
-  // AI Parse and AI Respond endpoints have been moved to the client (src/parser.ts and src/insights.ts)
-  
-
-
-
   // Vite middleware for development
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({

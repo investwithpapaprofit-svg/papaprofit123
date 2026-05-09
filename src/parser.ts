@@ -1,6 +1,5 @@
 import { UserProfile } from './types';
 import { finance } from './finance';
-import { auth } from './firebase';
 import { GoogleGenAI, Type } from '@google/genai';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });

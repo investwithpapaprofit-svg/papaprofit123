@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "tsx server.ts",
     "build": "vite build && npm run build:server",
-    "build:server": "esbuild server.ts --bundle --platform=node --outfile=dist/server.js --format=esm --packages=external",
-    "start": "node dist/server.js",
+    "build:server": "esbuild server.ts --bundle --platform=node --outfile=dist/server.cjs --packages=external",
+    "start": "node dist/server.cjs",
     "preview": "vite preview",
     "clean": "rimraf dist",
     "lint": "tsc --noEmit",
