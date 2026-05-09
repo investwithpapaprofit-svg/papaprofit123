@@ -1,8 +1,6 @@
 import { UserProfile } from './types';
 import { finance } from './finance';
-import { GoogleGenAI, Type } from '@google/genai';
-
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+import { auth } from './firebase';
 
 export const parser = {
   async parse(msg: string, currentProfile: UserProfile, previousAssistantMsg?: string): Promise<{ intent: string; confidence: number; updates: string[]; newProfile: UserProfile, clarificationMsg?: string }> {
@@ -14,100 +12,18 @@ export const parser = {
     const fmt = (n: number) => `₹${n.toLocaleString('en-IN')}`;
 
     try {
-      const systemCtx = `Parse financial input.
-      
-CRITICAL CONTEXT RULE:
-The user's latest message must be interpreted in the context of the assistant's previous question. 
-
-Examples:
-
-Assistant: "What's your monthly expense roughly?"
-User: "around 80000"
-
-Interpretation:
-{
-  "expenses": [{ "name": "Monthly Expenses", "value": 80000 }],
-  "clarificationNeeded": false
-}
-
-Assistant: "How much do you have invested?"
-User: "5 lakhs"
-
-Interpretation:
-{
-  "assets": [{ "name": "Investments", "value": 500000 }]
-}
-
-Assistant: "Any loans?"
-User: "2 lakh car loan"
-
-Interpretation:
-{
-  "loans": [{ "name": "Car Loan", "amount": 200000 }]
-}
-
-Do NOT ask for clarification if the assistant's previous message already clearly establishes the category being discussed.
-Short numeric replies like "80k", "around 50k", "2 lakh", "yes", "no" must inherit context from the previous assistant message.
-
-Current profile limits clarification: If unclear whether user means per month or year, add clarificationNeeded: true and provide clarificationMessage. Extract numeric values completely. Map intents to: ['income', 'expense', 'subscription', 'loan', 'asset', 'portfolio', 'goal', 'general']. If multiple apply, pick the primary one or general. Output strict JSON fitting the schema.` + (previousAssistantMsg ? `\n\nPrevious Assistant Message: "${previousAssistantMsg}"` : "");
-
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: [{ role: 'user', parts: [{ text: msg }] }],
-        config: {
-          systemInstruction: systemCtx,
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              intent: { type: Type.STRING },
-              confidenceScore: { type: Type.NUMBER },
-              clarificationNeeded: { type: Type.BOOLEAN },
-              clarificationMessage: { type: Type.STRING },
-              extracted_data: {
-                type: Type.OBJECT,
-                properties: {
-                  personal: {
-                    type: Type.OBJECT,
-                    properties: { name: { type: Type.STRING }, age: { type: Type.NUMBER }, riskProfile: { type: Type.STRING } }
-                  },
-                  incomeSources: {
-                    type: Type.ARRAY,
-                    items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, value: { type: Type.NUMBER } } }
-                  },
-                  expenses: {
-                    type: Type.ARRAY,
-                    items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, value: { type: Type.NUMBER }, category: { type: Type.STRING } } }
-                  },
-                  subscriptions: {
-                    type: Type.ARRAY,
-                    items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, cost: { type: Type.NUMBER }, billingCycle: { type: Type.STRING } } }
-                  },
-                  loans: {
-                    type: Type.ARRAY,
-                    items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, amount: { type: Type.NUMBER }, rate: { type: Type.NUMBER }, emi: { type: Type.NUMBER } } }
-                  },
-                  assets: {
-                    type: Type.ARRAY,
-                    items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, value: { type: Type.NUMBER }, type: { type: Type.STRING }, mortgageable: { type: Type.BOOLEAN } } }
-                  },
-                  portfolio: {
-                    type: Type.ARRAY,
-                    items: { type: Type.OBJECT, properties: { symbol: { type: Type.STRING }, name: { type: Type.STRING }, quantity: { type: Type.NUMBER }, averageBuyPrice: { type: Type.NUMBER }, assetType: { type: Type.STRING } } }
-                  },
-                  goals: {
-                    type: Type.ARRAY,
-                    items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, target: { type: Type.NUMBER }, months: { type: Type.NUMBER }, type: { type: Type.STRING } } }
-                  }
-                }
-              }
-            }
-          }
-        }
+      const token = await auth.currentUser?.getIdToken();
+      const response = await fetch('/api/ai/parse', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ msg, currentProfile, previousAssistantMsg })
       });
       
-      const rawText = response.text || "{}";
-      const data = JSON.parse(rawText);
+      if (!response.ok) throw new Error(`Parse failed with status ${response.status}`);
+      const data = await response.json();
       
       intent = data.intent || 'general';
       confidence = data.confidenceScore || 0.5;
@@ -219,9 +135,10 @@ Current profile limits clarification: If unclear whether user means per month or
              if (existing) {
                  if (goal.target) existing.target = goal.target;
                  if (goal.months) existing.months = goal.months;
+                 if (goal.saved !== undefined) existing.saved = goal.saved;
              } else {
                  newProfile.goals.push({
-                     name: goal.name, target: goal.target, months: goal.months || 60, saved: 0, type: goal.type || 'custom'
+                     name: goal.name, target: goal.target, months: goal.months || 60, saved: goal.saved || 0, type: goal.type || 'custom'
                  });
              }
              updates.push(`Goal '${goal.name}' set for ${fmt(goal.target)}`);

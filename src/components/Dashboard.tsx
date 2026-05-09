@@ -12,7 +12,7 @@ interface DashboardProps {
 }
 
 export function Dashboard({ profile }: DashboardProps) {
-  const COLORS = ['#1a7a4a', '#29a365', '#d4851a', '#e6a845', '#c0392b'];
+  const COLORS = ['#22c55e', '#0891b2', '#f59e0b', '#7c3aed', '#6b7280'];
   const [isExporting, setIsExporting] = useState(false);
 
   const exportPDF = async () => {
@@ -77,54 +77,54 @@ export function Dashboard({ profile }: DashboardProps) {
   };
 
   return (
-    <div id="dashboard-export-area" className="p-4 bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-6 relative">
+    <div id="dashboard-export-area" className="p-6 bg-w rounded-[14px] shadow-[0_2px_20px_rgba(6,61,30,.08)] border-[1.5px] border-faint flex flex-col gap-6 relative">
       <div className="absolute top-4 right-4 z-10">
         <button 
           onClick={exportPDF}
           disabled={isExporting}
-          className="bg-[#1a7a4a] text-white px-4 py-2 rounded-lg text-sm font-semibold shadow hover:bg-[#145c37] disabled:opacity-50 transition"
+          className="bg-forest text-white px-4 py-2 rounded-[10px] text-[0.85rem] font-bold shadow hover:bg-deep disabled:opacity-50 transition"
         >
-          {isExporting ? 'Exporting...' : 'Export Report (PDF)'}
+          {isExporting ? 'Exporting...' : 'Export Report'}
         </button>
       </div>
       
-      <div className="grid grid-cols-2 gap-4 mt-8">
-        <div className="bg-gray-50 rounded-xl p-4">
-          <div className="text-sm text-gray-500 mb-1">Total Net Worth</div>
-          <div className="text-3xl font-bold text-gray-900">{fmt(nw)}</div>
+      <div className="grid grid-cols-2 gap-[14px] mt-8">
+        <div className="bg-ultramint border-[1.5px] border-faint rounded-[14px] p-5 shadow-[0_4px_14px_rgba(34,197,78,.05)] hover:-translate-y-px transition">
+          <div className="text-[0.62rem] font-bold tracking-[0.08em] uppercase text-ghost mb-2">Total Net Worth</div>
+          <div className="text-3xl font-serif text-forest">{fmt(nw)}</div>
         </div>
-        <div className="bg-gray-50 rounded-xl p-4">
-          <div className="text-sm text-gray-500 mb-1">Monthly Cash Flow</div>
-          <div className={`text-3xl font-bold ${surplus >= 0 ? 'text-[#1a7a4a]' : 'text-[#c0392b]'}`}>
+        <div className="bg-ultramint border-[1.5px] border-faint rounded-[14px] p-5 shadow-[0_4px_14px_rgba(34,197,78,.05)] hover:-translate-y-px transition">
+          <div className="text-[0.62rem] font-bold tracking-[0.08em] uppercase text-ghost mb-2">Monthly Cash Flow</div>
+          <div className={`text-3xl font-serif ${surplus >= 0 ? 'text-[#0891b2]' : 'text-[#dc2626]'}`}>
             {surplus >= 0 ? '+' : ''}{fmt(surplus)}
           </div>
         </div>
       </div>
 
       {historyData.length > 1 && (
-        <div className="h-48 mt-2">
-          <h4 className="text-sm font-semibold text-gray-700 mb-4">Net Worth Journey</h4>
+        <div className="h-[220px] mt-4">
+          <h4 className="text-[0.62rem] font-bold tracking-[0.1em] uppercase text-ghost mb-[14px]">Net Worth Journey</h4>
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={historyData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
               <defs>
                 <linearGradient id="colorNw" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#1a7a4a" stopOpacity={0.8}/>
-                  <stop offset="95%" stopColor="#1a7a4a" stopOpacity={0}/>
+                  <stop offset="5%" stopColor="#22c55e" stopOpacity={0.8}/>
+                  <stop offset="95%" stopColor="#22c55e" stopOpacity={0}/>
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
-              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6B7280' }} />
-              <YAxis axisLine={false} tickLine={false} tickFormatter={fmtShort} tick={{ fontSize: 12, fill: '#6B7280' }} />
-              <RechartsTooltip formatter={(value: any) => [fmt(Number(value) || 0), 'Net Worth']} labelStyle={{ color: '#111827', fontWeight: 600 }} />
-              <Area type="monotone" dataKey="netWorth" stroke="#1a7a4a" fillOpacity={1} fill="url(#colorNw)" strokeWidth={3} />
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#d1e8d7" />
+              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#8ab89a', fontFamily: 'Plus Jakarta Sans' }} />
+              <YAxis axisLine={false} tickLine={false} tickFormatter={fmtShort} tick={{ fontSize: 12, fill: '#8ab89a', fontFamily: 'Plus Jakarta Sans' }} />
+              <RechartsTooltip formatter={(value: any) => [fmt(Number(value) || 0), 'Net Worth']} labelStyle={{ color: '#063d1e', fontWeight: 600, fontFamily: 'Plus Jakarta Sans' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 20px rgba(6,61,30,.2)' }} />
+              <Area type="monotone" dataKey="netWorth" stroke="#22c55e" fillOpacity={1} fill="url(#colorNw)" strokeWidth={3} />
             </AreaChart>
           </ResponsiveContainer>
         </div>
       )}
 
       {assetData.length > 0 && (
-        <div className="mt-4 border-t border-gray-100 pt-6">
-          <h4 className="text-sm font-semibold text-gray-700 mb-4">Asset Allocation</h4>
+        <div className="mt-4 border-t-[1.5px] border-faint pt-6">
+          <h4 className="text-[0.62rem] font-bold tracking-[0.1em] uppercase text-ghost mb-4">Asset Allocation</h4>
           <div className="flex items-center justify-center h-48">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>

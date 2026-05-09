@@ -1,7 +1,7 @@
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
-import YahooFinance from 'yahoo-finance2';
+import yahooFinance from 'yahoo-finance2';
 import dotenv from 'dotenv';
 import admin from 'firebase-admin';
 import { getFirestore } from 'firebase-admin/firestore';
@@ -10,12 +10,10 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import Stripe from 'stripe';
-import { finance } from './src/finance';
 
 dotenv.config();
 
-const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null as unknown as Stripe;
-const yahooFinance = new YahooFinance();
+const stripe: Stripe | null = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
 
 const appUrl = process.env.APP_URL || 'http://localhost:3000/';
 console.log('APP_URL:', appUrl);
@@ -51,18 +49,6 @@ const requireAuth = async (req: express.Request, res: express.Response, next: ex
     res.status(401).json({ error: 'Unauthorized' });
   }
 };
-
-const ONBOARDING_QUESTIONS = [
-  "**[Step 1/9]** Hi! I'm your PapaProfit AI. Let's get your profile set up. First, what's your **monthly income**?",
-  "**[Step 2/9]** Is your income **fixed or variable**?",
-  "**[Step 3/9]** How much do you **spend** monthly on expenses?",
-  "**[Step 4/9]** How much **savings** do you currently have?",
-  "**[Step 5/9]** Do you have any **loans**? If yes, how much?",
-  "**[Step 6/9]** How much **EMI** do you pay monthly?",
-  "**[Step 7/9]** Do you **invest** in stocks or gold? If so, roughly how much?",
-  "**[Step 8/9]** What is your main **financial goal**? (e.g. buy a house, retire early)",
-  "**[Step 9/9]** Finally, do you currently track your expenses and invest regularly?"
-];
 
 async function startServer() {
   const app = express();
@@ -104,6 +90,7 @@ async function startServer() {
 
     try {
       const payloadString = req.body.toString();
+      if (!stripe) return res.status(500).send('Stripe is not configured on the server');
       const event = stripe.webhooks.constructEvent(payloadString, signature, endpointSecret);
       
       // Handle the checkout.session.completed event
@@ -148,6 +135,7 @@ async function startServer() {
         return res.status(500).json({ error: 'Stripe is not configured' });
       }
 
+      if (!stripe) return res.status(500).json({ error: 'Stripe is not configured' });
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ['card'],
         line_items: [{
@@ -200,6 +188,234 @@ async function startServer() {
     } catch (error: any) {
       console.error('Stock quote error:', error.message || error);
       res.status(500).json({ error: 'Failed to fetch stock quote' });
+    }
+  });
+
+  const parseSchema = z.object({
+    msg: z.string().max(2000),
+    currentProfile: z.any(),
+    previousAssistantMsg: z.string().optional()
+  });
+
+  app.post('/api/ai/parse', requireAuth, async (req, res) => {
+    try {
+      const { msg, previousAssistantMsg } = parseSchema.parse(req.body);
+      const ai = new (await import('@google/genai')).GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const { Type } = await import('@google/genai');
+
+      const systemCtx = `Parse financial input.
+      
+CRITICAL CONTEXT RULE:
+The user's latest message must be interpreted in the context of the assistant's previous question. 
+
+Examples:
+
+Assistant: "What's your monthly expense roughly?"
+User: "around 80000"
+
+Interpretation:
+{
+  "expenses": [{ "name": "Monthly Expenses", "value": 80000 }],
+  "clarificationNeeded": false
+}
+
+Assistant: "How much do you have invested?"
+User: "5 lakhs"
+
+Interpretation:
+{
+  "assets": [{ "name": "Investments", "value": 500000 }]
+}
+
+Assistant: "Any loans?"
+User: "2 lakh car loan"
+
+Interpretation:
+{
+  "loans": [{ "name": "Car Loan", "amount": 200000 }]
+}
+
+Do NOT ask for clarification if the assistant's previous message already clearly establishes the category being discussed.
+Short numeric replies like "80k", "around 50k", "2 lakh", "yes", "no" must inherit context from the previous assistant message.
+
+Current profile limits clarification: If unclear whether user means per month or year, add clarificationNeeded: true and provide clarificationMessage. Extract numeric values completely. Map intents to: ['income', 'expense', 'subscription', 'loan', 'asset', 'portfolio', 'goal', 'general']. If multiple apply, pick the primary one or general. Output strict JSON fitting the schema.` + (previousAssistantMsg ? `\n\nPrevious Assistant Message: "${previousAssistantMsg}"` : "");
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.0-flash',
+        contents: [{ role: 'user', parts: [{ text: msg }] }],
+        config: {
+          systemInstruction: systemCtx,
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              intent: { type: Type.STRING },
+              confidenceScore: { type: Type.NUMBER },
+              clarificationNeeded: { type: Type.BOOLEAN },
+              clarificationMessage: { type: Type.STRING },
+              extracted_data: {
+                type: Type.OBJECT,
+                properties: {
+                  personal: {
+                    type: Type.OBJECT,
+                    properties: { name: { type: Type.STRING }, age: { type: Type.NUMBER }, riskProfile: { type: Type.STRING } }
+                  },
+                  incomeSources: {
+                    type: Type.ARRAY,
+                    items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, value: { type: Type.NUMBER } } }
+                  },
+                  expenses: {
+                    type: Type.ARRAY,
+                    items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, value: { type: Type.NUMBER }, category: { type: Type.STRING } } }
+                  },
+                  subscriptions: {
+                    type: Type.ARRAY,
+                    items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, cost: { type: Type.NUMBER }, billingCycle: { type: Type.STRING } } }
+                  },
+                  loans: {
+                    type: Type.ARRAY,
+                    items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, amount: { type: Type.NUMBER }, rate: { type: Type.NUMBER }, emi: { type: Type.NUMBER } } }
+                  },
+                  assets: {
+                    type: Type.ARRAY,
+                    items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, value: { type: Type.NUMBER }, type: { type: Type.STRING }, mortgageable: { type: Type.BOOLEAN } } }
+                  },
+                  portfolio: {
+                    type: Type.ARRAY,
+                    items: { type: Type.OBJECT, properties: { symbol: { type: Type.STRING }, name: { type: Type.STRING }, quantity: { type: Type.NUMBER }, averageBuyPrice: { type: Type.NUMBER }, assetType: { type: Type.STRING } } }
+                  },
+                  goals: {
+                    type: Type.ARRAY,
+                    items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, target: { type: Type.NUMBER }, months: { type: Type.NUMBER }, type: { type: Type.STRING }, saved: { type: Type.NUMBER } } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      });
+      const data = JSON.parse(response.text || "{}");
+      res.json(data);
+    } catch (error) {
+      console.error('Parse error:', error);
+      res.status(500).json({ error: 'Parse failed' });
+    }
+  });
+
+  const respondSchema = z.object({
+    userMsg: z.string().max(2000),
+    parsedData: z.any(),
+    profile: z.any(),
+    chatHistory: z.array(z.object({ role: z.string(), content: z.string() })).max(10),
+    onboardingStep: z.number().min(0).max(8).optional()
+  });
+
+  app.post('/api/ai/respond', requireAuth, async (req, res) => {
+    try {
+      const { parsedData, profile, chatHistory, onboardingStep } = respondSchema.parse(req.body);
+      const ai = new (await import('@google/genai')).GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const fmt = (n: number) => `₹${(n||0).toLocaleString('en-IN')}`;
+      const fhsScore = profile.metrics?.financialHealthScore || 0;
+
+      const financeModule = await import('./src/finance.js');
+      const finance = financeModule.finance || (financeModule as any).default?.finance;
+
+      const { ONBOARDING_QUESTIONS } = await import('./src/constants.js');
+
+      let formattedMessages = chatHistory.slice(-6).map((h: any) => ({
+        role: h.role === 'user' ? 'user' : 'model',
+        parts: [{ text: h.content }]
+      }));
+      if (formattedMessages.length > 0 && formattedMessages[0].role === 'model') {
+        formattedMessages.shift();
+      }
+
+      const onboardingCtx = onboardingStep !== undefined && onboardingStep >= 0 && onboardingStep < ONBOARDING_QUESTIONS.length
+        ? `\nONBOARDING STATUS: The user is currently in a guided setup at step ${onboardingStep}. The current question being evaluated is: "${ONBOARDING_QUESTIONS[onboardingStep]}". DO NOT give a full financial plan yet. Prioritize: 1. expenses, 2. loans, 3. savings, 4. investments, 5. goals. If data is missing, casually ask for it step-by-step.`
+        : "";
+
+      const systemCtx = `You are PapaProfit — a smart, modern financial copilot for Indian users.
+
+Your personality:
+* Talk like a real human, not a finance article.
+* Be conversational, short, warm, intelligent, and slightly playful.
+* Sound premium and confident.
+* NEVER sound robotic, corporate, or overly motivational.
+* NEVER flood the user with long paragraphs.
+* NEVER dump huge summaries unless explicitly asked.
+* NEVER give more than 3 short paragraphs at once.
+* Keep most replies under 80 words.
+* Ask only ONE important question at a time.
+* React naturally before asking the next thing.
+
+VERY IMPORTANT:
+This is a chat app, not a report generator.
+BAD: Long essays, huge bullet lists, multiple sections like "Summary", "Insights", "Next Action", too much financial jargon, giving complete financial plans too early.
+
+GOOD EXAMPLES:
+User: "I earn 1.4 lakh"
+Assistant: "Nice. What's your monthly spend roughly?"
+User: "Around 60k"
+Assistant: "That's actually strong. You're saving more than most people already. Any loans or EMIs?"
+
+Conversation style rules:
+* Use short responses.
+* Use occasional emojis naturally, but not excessively.
+* Avoid repeating known information.
+* Do not explain obvious things.
+* Do not overpraise the user.
+* Do not mention percentages like "top 95% of India" unless specifically relevant.
+* Avoid giant calculations unless the user asks.
+* Be emotionally intelligent and curious.
+
+Advice behavior:
+* Give actionable advice in 1-3 lines.
+* Prefer simple practical suggestions over theory.
+* Be direct and useful.
+
+Formatting rules:
+* No markdown headings.
+* No "Summary:" sections.
+* No giant bullet dumps.
+* No more than 3 bullets at once.
+* Prefer plain chat-style text.
+${onboardingCtx}
+
+CLIENT PROFILE:
+Name: ${profile.personal?.name || 'Unknown'}
+Age: ${profile.personal?.age || 'Unknown'}
+Risk Profile: ${profile.personal?.riskProfile || 'Unknown'}
+
+METRICS:
+Monthly Income: ${fmt(finance.totalIncome(profile))}
+Monthly Expenses: ${fmt(finance.totalExpenses(profile))}
+EMI: ${fmt(finance.totalEMI(profile))}
+Total Loans: ${fmt(finance.totalLiabilities(profile))}
+Total Assets: ${fmt(finance.totalAssets(profile))}
+
+ADVANCED METRICS:
+Net worth: ${fmt(profile.metrics?.netWorth || 0)}
+Monthly surplus: ${fmt(profile.metrics?.monthlyCashFlow || 0)}
+Savings rate: ${(profile.metrics?.savingsRate || 0).toFixed(1)}%
+Financial Health Score: ${fhsScore > 0 ? fhsScore + '/100' : 'Not enough data yet'}
+
+CURRENT COPILOT ANALYSIS:
+- Extracted: ${parsedData?.updates?.length > 0 ? parsedData.updates.join(', ') : 'No new hard data found.'}
+- Parsing Intent: ${parsedData?.intent || 'general'}
+- Recommended Action: ${finance.getNextBestAction(profile)}`;
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.0-flash',
+        contents: formattedMessages,
+        config: {
+          systemInstruction: systemCtx
+        }
+      });
+
+      res.json({ text: response.text });
+    } catch (error) {
+      console.error('Respond error:', error);
+      res.status(500).json({ error: 'Respond failed' });
     }
   });
 
