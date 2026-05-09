@@ -264,11 +264,15 @@ export default function App() {
     setShowSuggestions(false);
     
     // 1. Add user message
+    const previousAssistantMsg = chatHistory.length > 0 && chatHistory[chatHistory.length - 1].role === 'ai' 
+      ? chatHistory[chatHistory.length - 1].content 
+      : undefined;
+
     const newHistory = [...chatHistory, { role: 'user', content: userMsg }];
     setChatHistory(newHistory);
     
     // 2. Parse message & update profile
-    const parsed = await parser.parse(userMsg, profile);
+    const parsed = await parser.parse(userMsg, profile, previousAssistantMsg);
     
     if (parsed.clarificationMsg) {
         setIsTyping(false);

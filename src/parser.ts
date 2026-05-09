@@ -5,7 +5,7 @@ import { GoogleGenAI, Type } from '@google/genai';
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 export const parser = {
-  async parse(msg: string, currentProfile: UserProfile): Promise<{ intent: string; confidence: number; updates: string[]; newProfile: UserProfile, clarificationMsg?: string }> {
+  async parse(msg: string, currentProfile: UserProfile, previousAssistantMsg?: string): Promise<{ intent: string; confidence: number; updates: string[]; newProfile: UserProfile, clarificationMsg?: string }> {
     const newProfile = JSON.parse(JSON.stringify(currentProfile)) as UserProfile;
     const updates: string[] = [];
     let intent = 'general';
@@ -14,11 +14,48 @@ export const parser = {
     const fmt = (n: number) => `₹${n.toLocaleString('en-IN')}`;
 
     try {
+      const systemCtx = `Parse financial input.
+      
+CRITICAL CONTEXT RULE:
+The user's latest message must be interpreted in the context of the assistant's previous question. 
+
+Examples:
+
+Assistant: "What's your monthly expense roughly?"
+User: "around 80000"
+
+Interpretation:
+{
+  "expenses": [{ "name": "Monthly Expenses", "value": 80000 }],
+  "clarificationNeeded": false
+}
+
+Assistant: "How much do you have invested?"
+User: "5 lakhs"
+
+Interpretation:
+{
+  "assets": [{ "name": "Investments", "value": 500000 }]
+}
+
+Assistant: "Any loans?"
+User: "2 lakh car loan"
+
+Interpretation:
+{
+  "loans": [{ "name": "Car Loan", "amount": 200000 }]
+}
+
+Do NOT ask for clarification if the assistant's previous message already clearly establishes the category being discussed.
+Short numeric replies like "80k", "around 50k", "2 lakh", "yes", "no" must inherit context from the previous assistant message.
+
+Current profile limits clarification: If unclear whether user means per month or year, add clarificationNeeded: true and provide clarificationMessage. Extract numeric values completely. Map intents to: ['income', 'expense', 'subscription', 'loan', 'asset', 'portfolio', 'goal', 'general']. If multiple apply, pick the primary one or general. Output strict JSON fitting the schema.` + (previousAssistantMsg ? `\n\nPrevious Assistant Message: "${previousAssistantMsg}"` : "");
+
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: [{ role: 'user', parts: [{ text: msg }] }],
         config: {
-          systemInstruction: `Parse financial input.\n\nCurrent profile limits clarification: If unclear whether user means per month or year, add clarificationNeeded: true and provide clarificationMessage. Extract numeric values completely. Map intents to: ['income', 'expense', 'subscription', 'loan', 'asset', 'portfolio', 'goal', 'general']. If multiple apply, pick the primary one or general. Output strict JSON fitting the schema.`,
+          systemInstruction: systemCtx,
           responseMimeType: 'application/json',
           responseSchema: {
             type: Type.OBJECT,
