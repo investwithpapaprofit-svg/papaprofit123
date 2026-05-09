@@ -15,7 +15,14 @@ export const insights = {
         body: JSON.stringify({ userMsg, parsedData, profile, chatHistory, onboardingStep })
       });
       
-      if (!response.ok) throw new Error(`Respond failed with status ${response.status}`);
+      if (!response.ok) {
+        let errText = `Respond failed with status ${response.status}`;
+        try {
+          const errData = await response.json();
+          if (errData.error) errText = errData.error;
+        } catch(ex) {}
+        throw new Error(errText);
+      }
       const data = await response.json();
       const text = data.text || 'Sorry, I had trouble generating a response.';
       let finalResponse = text;
@@ -47,9 +54,12 @@ export const insights = {
       }
 
       return finalResponse;
-    } catch (e) {
+    } catch (e: any) {
       console.error("AI Insights error:", e);
-      return "I'm having a bit of trouble connecting to my brain right now. Can we try that again in a second?";
+      if (e.message && e.message.includes('API key not valid')) {
+        return "⚠️ **Configuration Error**: Your Gemini API key is invalid or not provided. Please go to AI Studio Settings -> API Keys, and enter a valid Gemini API key to use PapaProfit.";
+      }
+      return `I'm having a bit of trouble connecting to my brain right now. Error: ${e.message}`;
     }
   }
 };

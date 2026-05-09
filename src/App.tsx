@@ -271,8 +271,11 @@ export default function App() {
     const newHistory = [...chatHistory, { role: 'user', content: userMsg }];
     setChatHistory(newHistory);
     
-    // 2. Parse message & update profile
-    const parsed = await parser.parse(userMsg, profile, previousAssistantMsg);
+    setIsTyping(true);
+
+    try {
+      // 2. Parse message & update profile
+      const parsed = await parser.parse(userMsg, profile, previousAssistantMsg);
     
     if (parsed.clarificationMsg) {
         setIsTyping(false);
@@ -321,8 +324,19 @@ export default function App() {
     }
     
     // 5. Add AI response
-    setIsTyping(false);
     setChatHistory(prev => [...prev, { role: 'ai', content: reply, updates: parsed.updates }]);
+    } catch (error: any) {
+      console.error('Handle send error:', error);
+      let errMsg = "I'm having a bit of trouble connecting to my brain right now.";
+      if (error.message && error.message.includes('API key not valid')) {
+         errMsg = "⚠️ **Configuration Error**: Your Gemini API key is invalid or not provided. Please go to AI Studio Settings -> API Keys, and enter a valid Gemini API key to use PapaProfit.";
+      } else if (error.message) {
+         errMsg = "Error: " + error.message;
+      }
+      setChatHistory(prev => [...prev, { role: 'ai', content: errMsg }]);
+    } finally {
+      setIsTyping(false);
+    }
   };
 
   if (!user) {

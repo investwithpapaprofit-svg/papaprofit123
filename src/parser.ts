@@ -22,7 +22,14 @@ export const parser = {
         body: JSON.stringify({ msg, currentProfile, previousAssistantMsg })
       });
       
-      if (!response.ok) throw new Error(`Parse failed with status ${response.status}`);
+      if (!response.ok) {
+        let errText = `Parse failed with status ${response.status}`;
+        try {
+          const errData = await response.json();
+          if (errData.error) errText = errData.error;
+        } catch(e) {}
+        throw new Error(errText);
+      }
       const data = await response.json();
       
       intent = data.intent || 'general';

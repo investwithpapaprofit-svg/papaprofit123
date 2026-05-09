@@ -200,7 +200,11 @@ async function startServer() {
   app.post('/api/ai/parse', requireAuth, async (req, res) => {
     try {
       const { msg, previousAssistantMsg } = parseSchema.parse(req.body);
-      const ai = new (await import('@google/genai')).GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const sdkArgs: any = {};
+      if (process.env.GEMINI_API_KEY) {
+        sdkArgs.apiKey = process.env.GEMINI_API_KEY;
+      }
+      const ai = new (await import('@google/genai')).GoogleGenAI(sdkArgs);
       const { Type } = await import('@google/genai');
 
       const systemCtx = `Parse financial input.
@@ -241,7 +245,7 @@ Short numeric replies like "80k", "around 50k", "2 lakh", "yes", "no" must inher
 Current profile limits clarification: If unclear whether user means per month or year, add clarificationNeeded: true and provide clarificationMessage. Extract numeric values completely. Map intents to: ['income', 'expense', 'subscription', 'loan', 'asset', 'portfolio', 'goal', 'general']. If multiple apply, pick the primary one or general. Output strict JSON fitting the schema.` + (previousAssistantMsg ? `\n\nPrevious Assistant Message: "${previousAssistantMsg}"` : "");
 
       const response = await ai.models.generateContent({
-        model: 'gemini-2.0-flash',
+        model: 'gemini-3-flash-preview',
         contents: [{ role: 'user', parts: [{ text: msg }] }],
         config: {
           systemInstruction: systemCtx,
@@ -296,14 +300,14 @@ Current profile limits clarification: If unclear whether user means per month or
       });
       const data = JSON.parse(response.text || "{}");
       res.json(data);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Parse error:', error);
-      res.status(500).json({ error: 'Parse failed' });
+      res.status(500).json({ error: error.message || 'Parse failed' });
     }
   });
 
   const respondSchema = z.object({
-    userMsg: z.string().max(2000),
+    userMsg: z.string().max(2000).optional(),
     parsedData: z.any(),
     profile: z.any(),
     chatHistory: z.array(z.object({ role: z.string(), content: z.string() })).max(10),
@@ -313,7 +317,11 @@ Current profile limits clarification: If unclear whether user means per month or
   app.post('/api/ai/respond', requireAuth, async (req, res) => {
     try {
       const { parsedData, profile, chatHistory, onboardingStep } = respondSchema.parse(req.body);
-      const ai = new (await import('@google/genai')).GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const sdkArgs: any = {};
+      if (process.env.GEMINI_API_KEY) {
+        sdkArgs.apiKey = process.env.GEMINI_API_KEY;
+      }
+      const ai = new (await import('@google/genai')).GoogleGenAI(sdkArgs);
       const fmt = (n: number) => `₹${(n||0).toLocaleString('en-IN')}`;
       const fhsScore = profile.metrics?.financialHealthScore || 0;
 
@@ -405,7 +413,7 @@ CURRENT COPILOT ANALYSIS:
 - Recommended Action: ${finance.getNextBestAction(profile)}`;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-2.0-flash',
+        model: 'gemini-3-flash-preview',
         contents: formattedMessages,
         config: {
           systemInstruction: systemCtx
@@ -413,9 +421,9 @@ CURRENT COPILOT ANALYSIS:
       });
 
       res.json({ text: response.text });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Respond error:', error);
-      res.status(500).json({ error: 'Respond failed' });
+      res.status(500).json({ error: error.message || 'Respond failed' });
     }
   });
 
