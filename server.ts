@@ -16,7 +16,11 @@ import { finance } from './src/finance.js';
 
 dotenv.config();
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
+const sdkArgs: any = {};
+if (process.env.GEMINI_API_KEY) {
+  sdkArgs.apiKey = process.env.GEMINI_API_KEY;
+}
+const ai = new GoogleGenAI(sdkArgs);
 
 const stripe: Stripe | null = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
 
@@ -26,16 +30,19 @@ console.log('APP_URL:', appUrl);
 let firestore: any;
 
 // Initialize Firebase Admin
-try {
-  const projectId = process.env.VITE_FIREBASE_PROJECT_ID;
-  const databaseId = process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || '(default)';
-  
-  const adminApp = projectId ? admin.initializeApp({ projectId }) : admin.initializeApp();
-  firestore = getFirestore(adminApp, databaseId);
-} catch (error) {
-  console.log('Firebase Admin init error', error);
-  // fallback if already initialized
-  firestore = getFirestore(admin.app(), process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || '(default)');
+const firebaseConfigPath = path.join(process.cwd(), 'firebase-applet-config.json');
+if (fs.existsSync(firebaseConfigPath)) {
+  const config = JSON.parse(fs.readFileSync(firebaseConfigPath, 'utf-8'));
+  const adminApp = admin.initializeApp({
+    projectId: config.projectId,
+  });
+  firestore = getFirestore(adminApp, config.firestoreDatabaseId);
+} else {
+  try {
+    firestore = admin.firestore();
+  } catch (e) {
+    console.error("Firebase admin init error", e);
+  }
 }
 
 // Authentication Middleware
@@ -58,6 +65,7 @@ const requireAuth = async (req: express.Request, res: express.Response, next: ex
 
 async function startServer() {
   const app = express();
+  app.set('trust proxy', 1);
   const PORT = 3000;
 
   // Security Middlewares
