@@ -26,15 +26,16 @@ console.log('APP_URL:', appUrl);
 let firestore: any;
 
 // Initialize Firebase Admin
-const firebaseConfigPath = path.join(process.cwd(), 'firebase-applet-config.json');
-if (fs.existsSync(firebaseConfigPath)) {
-  const config = JSON.parse(fs.readFileSync(firebaseConfigPath, 'utf-8'));
-  const adminApp = admin.initializeApp({
-    projectId: config.projectId,
-  });
-  firestore = getFirestore(adminApp, config.firestoreDatabaseId);
-} else {
-  firestore = admin.firestore();
+try {
+  const projectId = process.env.VITE_FIREBASE_PROJECT_ID;
+  const databaseId = process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || '(default)';
+  
+  const adminApp = projectId ? admin.initializeApp({ projectId }) : admin.initializeApp();
+  firestore = getFirestore(adminApp, databaseId);
+} catch (error) {
+  console.log('Firebase Admin init error', error);
+  // fallback if already initialized
+  firestore = getFirestore(admin.app(), process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || '(default)');
 }
 
 // Authentication Middleware
