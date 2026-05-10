@@ -1,4 +1,4 @@
-export const GEMINI_MODEL = 'gemini-2.0-flash';
+export const GEMINI_MODEL = 'gemini-3-flash-preview';
 
 export const ONBOARDING_QUESTIONS = [
   "**[Step 1/9]** Hi! I'm your PapaProfit AI. Let's get your profile set up. First, what's your **monthly income**?",

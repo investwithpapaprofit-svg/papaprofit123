@@ -89,13 +89,15 @@ async function startServer() {
   const limiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: 200, // limit each IP to 200 requests per windowMs
+    validate: { trustProxy: false, xForwardedForHeader: false, forwardedHeader: false }
   });
   app.use(limiter);
 
   const aiLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 30,
-    message: { error: 'Too many AI requests. Please wait a few minutes.' }
+    message: { error: 'Too many AI requests. Please wait a few minutes.' },
+    validate: { trustProxy: false, xForwardedForHeader: false, forwardedHeader: false }
   });
 
   // Webhook for premium checkout (MUST be before express.json() for raw body verification)
@@ -149,7 +151,6 @@ async function startServer() {
       if (!process.env.STRIPE_SECRET_KEY) {
         // Fallback for mock if missing
         if (process.env.ENABLE_MOCK_PREMIUM === 'true') {
-           await firestore.collection('users').doc(uid).set({ profile: { isPremium: true } }, { merge: true });
            return res.json({ url: '/?mock_success=true' });
         }
         return res.status(500).json({ error: 'Stripe is not configured' });
@@ -257,11 +258,17 @@ Interpretation:
 Do NOT ask for clarification if the assistant's previous message already clearly establishes the category being discussed.
 Short numeric replies like "80k", "around 50k", "2 lakh", "yes", "no" must inherit context from the previous assistant message.
 
-Current profile limits clarification: If unclear whether user means per month or year, add clarificationNeeded: true and provide clarificationMessage. Extract numeric values completely. Map intents to: ['income', 'expense', 'subscription', 'loan', 'asset', 'portfolio', 'goal', 'general']. If multiple apply, pick the primary one or general. Output strict JSON fitting the schema.` + (previousAssistantMsg ? `\n\nPrevious Assistant Message: "${previousAssistantMsg}"` : "");
+Current profile limits clarification: If unclear whether user means per month or year, add clarificationNeeded: true and provide clarificationMessage. Extract numeric values completely. Map intents to: ['income', 'expense', 'subscription', 'loan', 'asset', 'portfolio', 'goal', 'general']. If multiple apply, pick the primary one or general. Output strict JSON fitting the schema.`;
+
+      const contents: any[] = [];
+      if (previousAssistantMsg) {
+        contents.push({ role: 'model', parts: [{ text: previousAssistantMsg }] });
+      }
+      contents.push({ role: 'user', parts: [{ text: msg }] });
 
       const response = await ai.models.generateContent({
         model: GEMINI_MODEL,
-        contents: [{ role: 'user', parts: [{ text: msg }] }],
+        contents,
         config: {
           systemInstruction: systemCtx,
           responseMimeType: 'application/json',
@@ -325,15 +332,15 @@ Current profile limits clarification: If unclear whether user means per month or
     userMsg: z.string().max(2000).optional(),
     parsedData: z.any(),
     chatHistory: z.array(z.object({ role: z.string(), content: z.string() })).max(10),
-    onboardingStep: z.number().min(0).max(8).optional()
+    onboardingStep: z.number().min(0).max(8).optional(),
+    currentProfile: z.any().optional()
   });
 
   app.post('/api/ai/respond', requireAuth, aiLimiter, async (req, res) => {
     try {
-      const { parsedData, chatHistory, onboardingStep } = respondSchema.parse(req.body);
-      const uid = (req as any).user.uid;
-      const docSnap = await firestore.collection('users').doc(uid).get();
-      const profile = docSnap.exists ? (docSnap.data()?.profile || {}) : {};
+      const { parsedData, chatHistory, onboardingStep, currentProfile } = respondSchema.parse(req.body);
+      
+      const profile = currentProfile || {};
       const fmt = (n: number) => `₹${(n||0).toLocaleString('en-IN')}`;
       const fhsScore = profile.metrics?.financialHealthScore || 0;
 

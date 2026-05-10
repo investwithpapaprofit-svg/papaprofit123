@@ -7,6 +7,9 @@ import { Suspense, lazy } from 'react';
 import { useAuth } from './hooks/useAuth';
 import { useProfile } from './hooks/useProfile';
 import { useChat } from './hooks/useChat';
+import { LoginScreen } from './components/LoginScreen';
+import { ChatWindow } from './components/ChatWindow';
+import { ChatInput } from './components/ChatInput';
 
 import { FinancialSourceEditor } from './components/FinancialSourceEditor';
 const Dashboard = lazy(() => import('./components/Dashboard').then(module => ({ default: module.Dashboard })));
@@ -77,46 +80,7 @@ export default function App() {
   };
 
   if (!user) {
-    return (
-      <div id="loginScreen">
-        <canvas id="blob-canvas" className="absolute inset-0 pointer-events-none z-0"></canvas>
-        <div className="flex z-10 w-full max-w-[900px] px-6 gap-[64px] items-center">
-          <div className="flex-1 flex flex-col gap-[22px] hidden md:flex">
-             <div className="inline-flex items-center gap-[7px] px-[14px] py-[5px] bg-xmint border-[1.5px] border-lmint rounded-full text-[0.68rem] font-bold text-deep tracking-[0.08em] uppercase w-fit">
-                <span className="w-[6px] h-[6px] rounded-full bg-lime shadow-[0_0_8px_var(--color-lime)] animate-pulse"></span>
-                Live AI — Powered by PapaProfit
-             </div>
-             <div className="logo-wrap !static !block pb-0 pt-0">
-               <h1>Papa<span className="logo-wrap-accent">Profit.</span></h1>
-               <p>The <strong>smartest financial OS</strong> for every Indian who wants to build real wealth — not just track expenses.</p>
-             </div>
-             <div className="flex flex-col gap-[9px]">
-               <div className="flex items-center gap-[10px] text-[0.78rem] font-medium text-muted"><span className="w-[6px] h-[6px] rounded-full bg-lime shrink-0"></span>AI-powered financial health score</div>
-               <div className="flex items-center gap-[10px] text-[0.78rem] font-medium text-muted"><span className="w-[6px] h-[6px] rounded-full bg-lime shrink-0"></span>Real-time net worth dashboard</div>
-               <div className="flex items-center gap-[10px] text-[0.78rem] font-medium text-muted"><span className="w-[6px] h-[6px] rounded-full bg-lime shrink-0"></span>Smart goal tracking & SIP planner</div>
-             </div>
-          </div>
-          <div className="login-card mx-auto md:mx-0 shrink-0">
-            <h2>Sign in</h2>
-            <p>Access your personal AI financial advisor — all your money in one intelligent place.</p>
-            {loginError && (
-              <div className="bg-red-50 border border-red-200 text-red-600 text-xs p-3 rounded-lg mb-4 text-left">
-                <strong>Login Error:</strong> {loginError}
-              </div>
-            )}
-            <button className="google-btn" onClick={handleLogin}>
-              <svg width="20" height="20" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
-              Continue with Google
-            </button>
-            <div className="flex items-center gap-[12px] my-[20px] text-ghost text-[0.72rem] font-medium before:flex-1 before:h-[1px] before:bg-faint after:flex-1 after:h-[1px] after:bg-faint">or</div>
-            <div className="grid grid-cols-2 gap-2 mt-[22px] pt-[20px] border-t-[1.5px] border-faint">
-              <div className="flex items-center gap-2 text-[0.72rem] font-medium text-muted"><div className="w-[28px] h-[28px] rounded-[8px] bg-ultramint border border-faint flex items-center justify-center shrink-0">🤖</div>AI Advisor</div>
-              <div className="flex items-center gap-2 text-[0.72rem] font-medium text-muted"><div className="w-[28px] h-[28px] rounded-[8px] bg-ultramint border border-faint flex items-center justify-center shrink-0">📊</div>Dashboard</div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
+    return <LoginScreen onLogin={handleLogin} error={loginError || ""} />;
   }
 
   const fhsScore = profile.metrics.financialHealthScore;
@@ -164,67 +128,24 @@ export default function App() {
                 <p>Tell me about your finances — income, expenses, loans, goals, anything.</p>
               </div>
 
-              <div className="chat-messages p-4 flex-1 overflow-y-auto flex flex-col gap-4">
-                {chatHistory.map((msg, i) => (
-                  <div key={i} className={`msg ${msg.role}`}>
-                    <div className="msg-avatar">{msg.role === 'user' ? user.displayName?.charAt(0).toUpperCase() : 'AI'}</div>
-                    <div className="msg-bubble">
-                      <div dangerouslySetInnerHTML={{ __html: formatAIResponse(msg.content) }} />
-                      {msg.updates && msg.updates.length > 0 && (
-                        <div className="profile-update mt-2 inline-flex">✓ Profile updated: {msg.updates.join(' · ')}</div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-                {isTyping && (
-                  <div className="msg ai">
-                    <div className="msg-avatar">AI</div>
-                    <div className="msg-bubble">
-                      <div className="typing-dots"><span></span><span></span><span></span></div>
-                    </div>
-                  </div>
-                )}
-                <div ref={chatEndRef} />
-              </div>
+              <ChatWindow
+                chatHistory={chatHistory}
+                isTyping={isTyping}
+                formatMessage={formatAIResponse}
+                chatEndRef={chatEndRef}
+                userName={user.displayName || undefined}
+              />
 
-              {showSuggestions && (
-                <div className="suggestions">
-                  <div className="sug" onClick={() => onSendWrapper('I earn ₹60,000/month')}>I earn ₹60,000/month</div>
-                  <div className="sug" onClick={() => onSendWrapper('I have a home loan of ₹20 lakh')}>I have a home loan of ₹20 lakh</div>
-                  <div className="sug" onClick={() => onSendWrapper('I want to buy a house in 5 years')}>I want to buy a house in 5 years</div>
-                  <div className="sug" onClick={() => onSendWrapper('Should I start a business?')}>Should I start a business?</div>
-                  <div className="sug" onClick={() => onSendWrapper('How is my financial health?')}>How is my financial health?</div>
-                </div>
-              )}
-
-              {chatHistory.length > 0 && !profile.onboardingCompleted && (
-                <div className="px-6 py-2 flex justify-end">
-                  <button 
-                    onClick={() => onSendWrapper("skip setup")}
-                    className="text-[10px] text-gray-400 hover:text-gray-600 underline"
-                  >
-                    Skip guided setup
-                  </button>
-                </div>
-              )}
-              <div className="chat-input-wrap">
-                <div className="chat-input-row">
-                  <input 
-                    type="text" 
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    placeholder="Type anything about your finances..." 
-                    onKeyDown={(e) => { if (e.key === 'Enter') onSendWrapper(); }}
-                    disabled={isTyping}
-                  />
-                  <button className="send-btn" onClick={() => onSendWrapper()} disabled={isTyping || !input.trim()}>➤</button>
-                </div>
-                <div className="text-center mt-2 px-4 pb-2">
-                  <p className="text-[10px] text-gray-400">
-                    PapaProfit AI can make mistakes. This is <span className="font-semibold text-gray-500">not certified financial advice</span>. Please verify calculations. <button onClick={() => setShowPrivacyPolicy(true)} className="underline hover:text-gray-600">Privacy Policy</button>
-                  </p>
-                </div>
-              </div>
+              <ChatInput
+                input={input}
+                onInput={setInput}
+                onSend={onSendWrapper}
+                isTyping={isTyping}
+                showSuggestions={showSuggestions}
+                onSkipSetup={() => onSendWrapper("skip setup")}
+                showSkipButton={chatHistory.length > 0 && !profile.onboardingCompleted}
+                setShowPrivacyPolicy={setShowPrivacyPolicy}
+              />
             </div>
           )}
         </div>
