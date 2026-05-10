@@ -3,7 +3,7 @@ import { finance } from './finance';
 import { auth } from './firebase';
 
 export const parser = {
-  async parse(msg: string, currentProfile: UserProfile, previousAssistantMsg?: string): Promise<{ intent: string; confidence: number; updates: string[]; newProfile: UserProfile, clarificationMsg?: string }> {
+  async parse(msg: string, currentProfile: UserProfile, chatHistory?: any[]): Promise<{ intent: string; confidence: number; updates: string[]; newProfile: UserProfile, clarificationMsg?: string }> {
     const newProfile = JSON.parse(JSON.stringify(currentProfile)) as UserProfile;
     const updates: string[] = [];
     let intent = 'general';
@@ -19,7 +19,7 @@ export const parser = {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ msg, currentProfile, previousAssistantMsg })
+        body: JSON.stringify({ msg, chatHistory })
       });
       
       if (!response.ok) {

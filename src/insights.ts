@@ -12,7 +12,7 @@ export const insights = {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ userMsg, parsedData, profile, chatHistory, onboardingStep })
+        body: JSON.stringify({ userMsg, parsedData, chatHistory, onboardingStep })
       });
       
       if (!response.ok) {
@@ -56,10 +56,10 @@ export const insights = {
       return finalResponse;
     } catch (e: any) {
       console.error("AI Insights error:", e);
-      if (e.message && e.message.includes('API key not valid')) {
-        return "⚠️ **Configuration Error**: Your Gemini API key is invalid or not provided. Please go to AI Studio Settings -> API Keys, and enter a valid Gemini API key to use PapaProfit.";
+      if (e.message?.includes('API key not valid') || e.message?.includes('API_KEY_INVALID')) {
+        return "⚠️ Configuration Error: The Gemini API key is invalid. Please check your settings.";
       }
-      return `I'm having a bit of trouble connecting to my brain right now. Error: ${e.message}`;
+      return "Sorry, I had trouble connecting. Please try again in a moment.";
     }
   }
 };

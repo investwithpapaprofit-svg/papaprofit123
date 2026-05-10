@@ -1,224 +1,39 @@
 import { useState, useEffect, useRef } from 'react';
-import { signInWithPopup, onAuthStateChanged, User } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { auth, db, googleProvider, handleFirestoreError, OperationType } from './firebase';
-import { UserProfile } from './types';
-import { parser } from './parser';
+import { auth } from './firebase';
 import { finance } from './finance';
-import { insights } from './insights';
 import { Portfolio } from './components/Portfolio';
 import DOMPurify from 'dompurify';
 import { Suspense, lazy } from 'react';
-import { ONBOARDING_QUESTIONS } from './constants';
+import { useAuth } from './hooks/useAuth';
+import { useProfile } from './hooks/useProfile';
+import { useChat } from './hooks/useChat';
 
 import { FinancialSourceEditor } from './components/FinancialSourceEditor';
 const Dashboard = lazy(() => import('./components/Dashboard').then(module => ({ default: module.Dashboard })));
 const Sidebar = lazy(() => import('./components/Sidebar').then(module => ({ default: module.Sidebar })));
 const PremiumModal = lazy(() => import('./components/PremiumModal').then(module => ({ default: module.PremiumModal })));
 
-const DEFAULT_PROFILE: UserProfile = {
-  personal: {},
-  income: [],
-  expenses: [],
-  loans: [],
-  assets: [],
-  subscriptions: [],
-  portfolio: [],
-  goals: [],
-  metrics: {
-    netWorth: 0,
-    monthlyCashFlow: 0,
-    savingsRate: 0,
-    debtToIncomeRatio: 0,
-    emergencyFundRunwayMonths: 0,
-    financialHealthScore: 0
-  },
-  insights: [],
-  history: [],
-  preferences: {
-    currency: 'INR'
-  },
-  onboardingCompleted: false,
-  lastUpdated: ''
-};
-
 export default function App() {
-  const [user, setUser] = useState<User | null>(null);
-  const [profile, setProfile] = useState<UserProfile>(DEFAULT_PROFILE);
-  const [chatHistory, setChatHistory] = useState<{ role: string; content: string; updates?: string[] }[]>([]);
-  const [input, setInput] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
+  const { user, loginError, handleLogin } = useAuth();
+  const { profile, setProfile, loadProfile, saveProfile } = useProfile(user);
+  const { chatHistory, isTyping, input, setInput, handleSend } = useChat(profile, saveProfile);
+
   const [showProfile, setShowProfile] = useState(false);
   const [showDashboard, setShowDashboard] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(true);
   const [showPremiumModal, setShowPremiumModal] = useState(false);
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
-  const [loginError, setLoginError] = useState<string | null>(null);
-  const [onboardingStep, setOnboardingStep] = useState(0);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      setUser(currentUser);
-      if (currentUser) {
-        setLoginError(null);
-        await loadProfile(currentUser.uid);
-      } else {
-        setChatHistory([]);
-        setProfile(DEFAULT_PROFILE);
-      }
-    });
-    return () => unsubscribe();
-  }, []);
-
-  // Add welcome message or start onboarding
-  useEffect(() => {
-    if (user && chatHistory.length === 0) {
-      setChatHistory(prev => {
-        if (prev.length > 0) return prev;
-        if (!profile.onboardingCompleted) {
-          setOnboardingStep(1);
-          return [{ role: 'ai', content: ONBOARDING_QUESTIONS[0] }];
-        } else {
-          const welcomeMsg = `**Welcome back to PapaProfit, ${user.displayName?.split(' ')[0]}! 👋**\n\nI'm ready to help you manage your finances. Your current net worth is **₹${profile.metrics.netWorth.toLocaleString('en-IN')}**.\n\nWhat would you like to focus on today?`;
-          return [{ role: 'ai', content: welcomeMsg }];
-        }
-      });
+    if (user) {
+      loadProfile();
     }
-  }, [user, profile.onboardingCompleted]);
+  }, [user, loadProfile]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }, [chatHistory, isTyping]);
-
-  const loadProfile = async (uid: string) => {
-    try {
-      const docRef = doc(db, 'users', uid);
-      const docSnap = await getDoc(docRef);
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        if (data.profile) {
-          const loadedProfile = data.profile as UserProfile;
-          let safeAssets = Array.isArray(loadedProfile.assets) ? loadedProfile.assets : [];
-          if (!Array.isArray(loadedProfile.assets) && typeof loadedProfile.assets === 'object') {
-             const old = loadedProfile.assets as any;
-             if (old.property) old.property.forEach((p:any) => safeAssets.push({type: 'property', name: p.name, value: p.value, mortgageable: p.mortgageable}));
-             if (old.gold) safeAssets.push({type: 'gold', name: 'Gold', value: old.gold});
-             if (old.cash) safeAssets.push({type: 'cash', name: 'Cash', value: old.cash});
-             if (old.other) old.other.forEach((p:any) => safeAssets.push({type: 'other', name: p.name, value: p.value}));
-             
-             if (old.stocks) {
-               loadedProfile.portfolio = loadedProfile.portfolio || [];
-               old.stocks.forEach((s:any) => {
-                 loadedProfile.portfolio.push({
-                   symbol: s.symbol,
-                   name: s.name,
-                   assetType: 'stock',
-                   quantity: s.quantity,
-                   averageBuyPrice: s.buyPrice,
-                   currentPrice: s.currentPrice
-                 });
-               });
-             }
-             if (old.crypto) {
-               loadedProfile.portfolio = loadedProfile.portfolio || [];
-               old.crypto.forEach((s:any) => {
-                 loadedProfile.portfolio.push({
-                   symbol: s.name,
-                   name: s.name,
-                   assetType: 'crypto',
-                   quantity: 1,
-                   averageBuyPrice: s.value,
-                   currentPrice: s.value
-                 });
-               });
-             }
-          }
-
-          let safePersonal: any = loadedProfile.personal || DEFAULT_PROFILE.personal;
-          if (!loadedProfile.personal && (loadedProfile as any).riskProfile) {
-            safePersonal.riskProfile = (loadedProfile as any).riskProfile;
-          }
-
-          const safeProfile = {
-            ...DEFAULT_PROFILE,
-            ...loadedProfile,
-            personal: safePersonal,
-            income: Array.isArray(loadedProfile.income) ? loadedProfile.income : (loadedProfile as any).incomeSources || [],
-            expenses: Array.isArray(loadedProfile.expenses) ? loadedProfile.expenses : (loadedProfile as any).expenseCategories || [],
-            loans: loadedProfile.loans || [],
-            assets: safeAssets,
-            subscriptions: loadedProfile.subscriptions || [],
-            portfolio: loadedProfile.portfolio || [],
-            goals: loadedProfile.goals || [],
-            metrics: loadedProfile.metrics || DEFAULT_PROFILE.metrics,
-            insights: loadedProfile.insights || []
-          };
-          finance.recalculateMetrics(safeProfile);
-
-          // Fetch live prices for stocks
-          if (safeProfile.portfolio && safeProfile.portfolio.length > 0) {
-            const token = await auth.currentUser?.getIdToken();
-            const updatedStocks = await Promise.all(safeProfile.portfolio.map(async (holding) => {
-              try {
-                if (holding.assetType === 'stock') {
-                  const res = await fetch(`/api/stock/quote?symbol=${holding.symbol}`, {
-                    headers: token ? { 'Authorization': `Bearer ${token}` } : {}
-                  });
-                  if (res.ok) {
-                    const quote = await res.json();
-                    if (quote && quote.regularMarketPrice) {
-                      return { ...holding, currentPrice: quote.regularMarketPrice };
-                    }
-                  }
-                }
-              } catch (e) {
-                console.error("Failed to fetch price for", holding.symbol);
-              }
-              return holding;
-            }));
-            safeProfile.portfolio = updatedStocks;
-            finance.recalculateMetrics(safeProfile);
-          }
-          setProfile(safeProfile);
-        }
-      }
-    } catch (error) {
-      handleFirestoreError(error, OperationType.GET, `users/${uid}`);
-    }
-  };
-
-  const saveProfile = async (newProfile: UserProfile) => {
-    if (!user) return;
-    try {
-      // Filter out isPremium from client-side save to prevent abuse
-      const { isPremium, ...profileToSave } = newProfile;
-      await setDoc(doc(db, 'users', user.uid), {
-        name: user.displayName,
-        email: user.email,
-        profile: profileToSave,
-        lastUpdated: new Date().toISOString()
-      }, { merge: true });
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}`);
-    }
-  };
-
-  const handleLogin = async () => {
-    try {
-      setLoginError(null);
-      await signInWithPopup(auth, googleProvider);
-    } catch (error: any) {
-      console.error("Login failed:", error);
-      if (error.code === 'auth/popup-blocked') {
-        setLoginError("Popup blocked. Please allow popups or open in a new tab.");
-      } else if (error.code === 'auth/unauthorized-domain') {
-        setLoginError("Domain not authorized. Add this URL to 'Authorized domains' in Firebase Console.");
-      } else {
-        setLoginError("Login failed: " + (error.message || "Unknown error"));
-      }
-    }
-  };
 
   const formatAIResponse = (text: string) => {
     if (!text) return '';
@@ -256,87 +71,9 @@ export default function App() {
     return sign + '₹' + abs.toLocaleString('en-IN');
   };
 
-  const handleSend = async (text: string = input) => {
-    if (!text.trim()) return;
-    
-    const userMsg = text.trim();
-    setInput('');
+  const onSendWrapper = async (text: string = input) => {
     setShowSuggestions(false);
-    
-    // 1. Add user message
-    const previousAssistantMsg = chatHistory.length > 0 && chatHistory[chatHistory.length - 1].role === 'ai' 
-      ? chatHistory[chatHistory.length - 1].content 
-      : undefined;
-
-    const newHistory = [...chatHistory, { role: 'user', content: userMsg }];
-    setChatHistory(newHistory);
-    
-    setIsTyping(true);
-
-    try {
-      // 2. Parse message & update profile
-      const parsed = await parser.parse(userMsg, profile, previousAssistantMsg);
-    
-    if (parsed.clarificationMsg) {
-        setIsTyping(false);
-        setChatHistory(prev => [...prev, { role: 'ai', content: parsed.clarificationMsg! }]);
-        return;
-    }
-
-    let updatedProfile = profile;
-    if (parsed && parsed.updates && parsed.updates.length > 0) {
-      updatedProfile = parsed.newProfile;
-      setProfile(updatedProfile);
-      await saveProfile(updatedProfile);
-    }
-    
-    // 3. Show typing indicator
-    setIsTyping(true);
-    
-    // 4. Generate AI response or next onboarding question
-    let reply = '';
-    const isFrustrated = /beat|shit|fuck|stupid|dumb|annoying|wrong|random|niga|bs|listening/i.test(userMsg);
-    const isSkipRequest = /skip|stop|don't ask|dont ask|just chat/i.test(userMsg);
-
-    if ((isSkipRequest || isFrustrated) && !profile.onboardingCompleted) {
-      const finalProfile = { ...updatedProfile, onboardingCompleted: true };
-      setProfile(finalProfile);
-      await saveProfile(finalProfile);
-      reply = isFrustrated 
-        ? "I'm really sorry for being repetitive. I've stopped the guided setup. I'm listening now—tell me exactly what you want to fix or update in your finances."
-        : "Understood! I'll stop the guided setup. We can just chat naturally now. What's on your mind regarding your finances?";
-      setOnboardingStep(0);
-    } else {
-      // Use AI for everything now
-      reply = await insights.generateResponse(userMsg, parsed, updatedProfile, newHistory, onboardingStep);
-      
-      // If the user provided data that matched the current onboarding step, we increment it
-      if (parsed.updates.length > 0 && !profile.onboardingCompleted) {
-        if (onboardingStep < ONBOARDING_QUESTIONS.length) {
-          setOnboardingStep(onboardingStep + 1);
-        } else {
-          const finalProfile = { ...updatedProfile, onboardingCompleted: true };
-          setProfile(finalProfile);
-          await saveProfile(finalProfile);
-          setOnboardingStep(0);
-        }
-      }
-    }
-    
-    // 5. Add AI response
-    setChatHistory(prev => [...prev, { role: 'ai', content: reply, updates: parsed.updates }]);
-    } catch (error: any) {
-      console.error('Handle send error:', error);
-      let errMsg = "I'm having a bit of trouble connecting to my brain right now.";
-      if (error.message && error.message.includes('API key not valid')) {
-         errMsg = "⚠️ **Configuration Error**: Your Gemini API key is invalid or not provided. Please go to AI Studio Settings -> API Keys, and enter a valid Gemini API key to use PapaProfit.";
-      } else if (error.message) {
-         errMsg = "Error: " + error.message;
-      }
-      setChatHistory(prev => [...prev, { role: 'ai', content: errMsg }]);
-    } finally {
-      setIsTyping(false);
-    }
+    await handleSend(text);
   };
 
   if (!user) {
@@ -452,18 +189,18 @@ export default function App() {
 
               {showSuggestions && (
                 <div className="suggestions">
-                  <div className="sug" onClick={() => handleSend('I earn ₹60,000/month')}>I earn ₹60,000/month</div>
-                  <div className="sug" onClick={() => handleSend('I have a home loan of ₹20 lakh')}>I have a home loan of ₹20 lakh</div>
-                  <div className="sug" onClick={() => handleSend('I want to buy a house in 5 years')}>I want to buy a house in 5 years</div>
-                  <div className="sug" onClick={() => handleSend('Should I start a business?')}>Should I start a business?</div>
-                  <div className="sug" onClick={() => handleSend('How is my financial health?')}>How is my financial health?</div>
+                  <div className="sug" onClick={() => onSendWrapper('I earn ₹60,000/month')}>I earn ₹60,000/month</div>
+                  <div className="sug" onClick={() => onSendWrapper('I have a home loan of ₹20 lakh')}>I have a home loan of ₹20 lakh</div>
+                  <div className="sug" onClick={() => onSendWrapper('I want to buy a house in 5 years')}>I want to buy a house in 5 years</div>
+                  <div className="sug" onClick={() => onSendWrapper('Should I start a business?')}>Should I start a business?</div>
+                  <div className="sug" onClick={() => onSendWrapper('How is my financial health?')}>How is my financial health?</div>
                 </div>
               )}
 
               {chatHistory.length > 0 && !profile.onboardingCompleted && (
                 <div className="px-6 py-2 flex justify-end">
                   <button 
-                    onClick={() => handleSend("skip setup")}
+                    onClick={() => onSendWrapper("skip setup")}
                     className="text-[10px] text-gray-400 hover:text-gray-600 underline"
                   >
                     Skip guided setup
@@ -477,10 +214,10 @@ export default function App() {
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     placeholder="Type anything about your finances..." 
-                    onKeyDown={(e) => { if (e.key === 'Enter') handleSend(); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') onSendWrapper(); }}
                     disabled={isTyping}
                   />
-                  <button className="send-btn" onClick={() => handleSend()} disabled={isTyping || !input.trim()}>➤</button>
+                  <button className="send-btn" onClick={() => onSendWrapper()} disabled={isTyping || !input.trim()}>➤</button>
                 </div>
                 <div className="text-center mt-2 px-4 pb-2">
                   <p className="text-[10px] text-gray-400">

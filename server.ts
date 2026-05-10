@@ -10,8 +10,13 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import Stripe from 'stripe';
+import { ONBOARDING_QUESTIONS, GEMINI_MODEL } from './src/constants.js';
+import { GoogleGenAI, Type } from '@google/genai';
+import { finance } from './src/finance.js';
 
 dotenv.config();
+
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 
 const stripe: Stripe | null = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
 
@@ -77,6 +82,12 @@ async function startServer() {
     max: 200, // limit each IP to 200 requests per windowMs
   });
   app.use(limiter);
+
+  const aiLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 30,
+    message: { error: 'Too many AI requests. Please wait a few minutes.' }
+  });
 
   // Webhook for premium checkout (MUST be before express.json() for raw body verification)
   app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }), async (req, res) => {
@@ -193,19 +204,14 @@ async function startServer() {
 
   const parseSchema = z.object({
     msg: z.string().max(2000),
-    currentProfile: z.any(),
-    previousAssistantMsg: z.string().optional()
+    chatHistory: z.array(z.object({ role: z.string(), content: z.string() })).max(10).optional(),
+    currentProfile: z.any().optional()
   });
 
-  app.post('/api/ai/parse', requireAuth, async (req, res) => {
+  app.post('/api/ai/parse', requireAuth, aiLimiter, async (req, res) => {
     try {
-      const { msg, previousAssistantMsg } = parseSchema.parse(req.body);
-      const sdkArgs: any = {};
-      if (process.env.GEMINI_API_KEY) {
-        sdkArgs.apiKey = process.env.GEMINI_API_KEY;
-      }
-      const ai = new (await import('@google/genai')).GoogleGenAI(sdkArgs);
-      const { Type } = await import('@google/genai');
+      const { msg, chatHistory = [] } = parseSchema.parse(req.body);
+      const previousAssistantMsg = chatHistory.filter((m: any) => m.role === 'ai').at(-1)?.content;
 
       const systemCtx = `Parse financial input.
       
@@ -245,7 +251,7 @@ Short numeric replies like "80k", "around 50k", "2 lakh", "yes", "no" must inher
 Current profile limits clarification: If unclear whether user means per month or year, add clarificationNeeded: true and provide clarificationMessage. Extract numeric values completely. Map intents to: ['income', 'expense', 'subscription', 'loan', 'asset', 'portfolio', 'goal', 'general']. If multiple apply, pick the primary one or general. Output strict JSON fitting the schema.` + (previousAssistantMsg ? `\n\nPrevious Assistant Message: "${previousAssistantMsg}"` : "");
 
       const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
+        model: GEMINI_MODEL,
         contents: [{ role: 'user', parts: [{ text: msg }] }],
         config: {
           systemInstruction: systemCtx,
@@ -309,26 +315,18 @@ Current profile limits clarification: If unclear whether user means per month or
   const respondSchema = z.object({
     userMsg: z.string().max(2000).optional(),
     parsedData: z.any(),
-    profile: z.any(),
     chatHistory: z.array(z.object({ role: z.string(), content: z.string() })).max(10),
     onboardingStep: z.number().min(0).max(8).optional()
   });
 
-  app.post('/api/ai/respond', requireAuth, async (req, res) => {
+  app.post('/api/ai/respond', requireAuth, aiLimiter, async (req, res) => {
     try {
-      const { parsedData, profile, chatHistory, onboardingStep } = respondSchema.parse(req.body);
-      const sdkArgs: any = {};
-      if (process.env.GEMINI_API_KEY) {
-        sdkArgs.apiKey = process.env.GEMINI_API_KEY;
-      }
-      const ai = new (await import('@google/genai')).GoogleGenAI(sdkArgs);
+      const { parsedData, chatHistory, onboardingStep } = respondSchema.parse(req.body);
+      const uid = (req as any).user.uid;
+      const docSnap = await firestore.collection('users').doc(uid).get();
+      const profile = docSnap.exists ? (docSnap.data()?.profile || {}) : {};
       const fmt = (n: number) => `₹${(n||0).toLocaleString('en-IN')}`;
       const fhsScore = profile.metrics?.financialHealthScore || 0;
-
-      const financeModule = await import('./src/finance.js');
-      const finance = financeModule.finance || (financeModule as any).default?.finance;
-
-      const { ONBOARDING_QUESTIONS } = await import('./src/constants.js');
 
       let formattedMessages = chatHistory.slice(-6).map((h: any) => ({
         role: h.role === 'user' ? 'user' : 'model',
@@ -413,7 +411,7 @@ CURRENT COPILOT ANALYSIS:
 - Recommended Action: ${finance.getNextBestAction(profile)}`;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
+        model: GEMINI_MODEL,
         contents: formattedMessages,
         config: {
           systemInstruction: systemCtx
