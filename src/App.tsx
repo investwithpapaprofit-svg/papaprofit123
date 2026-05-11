@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { auth } from './firebase';
+import { auth, db } from './firebase';
 import { finance } from './finance';
 import { Portfolio } from './components/Portfolio';
 import DOMPurify from 'dompurify';
@@ -19,14 +19,21 @@ const PremiumModal = lazy(() => import('./components/PremiumModal').then(module 
 export default function App() {
   const { user, loginError, handleLogin } = useAuth();
   const { profile, setProfile, loadProfile, saveProfile } = useProfile(user);
-  const { chatHistory, isTyping, input, setInput, handleSend } = useChat(profile, saveProfile);
+  const { chatHistory, setChatHistory, isTyping, input, setInput, handleSend } = useChat(profile, saveProfile);
 
   const [showProfile, setShowProfile] = useState(false);
   const [showDashboard, setShowDashboard] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(true);
   const [showPremiumModal, setShowPremiumModal] = useState(false);
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  const showToast = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 2500);
+  };
 
   useEffect(() => {
     if (user) {
@@ -102,7 +109,38 @@ export default function App() {
             <span className="w-1.5 h-1.5 rounded-full bg-lime shadow-[0_0_6px_var(--color-lime)] animate-pulse"></span>
             <span>FHS <strong>{fhsScore !== null ? fhsScore : '--'}</strong></span>
           </div>
-          <div className="avatar" title={user.displayName || "User"} onClick={() => auth.signOut()}>{user.displayName?.charAt(0).toUpperCase()}</div>
+          
+          {profile.isPremium && (
+            <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded border border-amber-200 uppercase tracking-wider">
+              PRO
+            </span>
+          )}
+
+          <div className="relative">
+            <div 
+              className="avatar cursor-pointer" 
+              onClick={() => setShowUserMenu(!showUserMenu)}
+            >
+              {user.displayName?.charAt(0).toUpperCase()}
+            </div>
+            {showUserMenu && (
+              <div className="absolute right-0 top-10 bg-white rounded-xl shadow-lg border border-gray-100 py-2 w-44 z-50">
+                <div className="px-4 py-2 text-sm text-gray-500 border-b">{user.email}</div>
+                <button
+                  onClick={() => { setShowProfile(true); setShowUserMenu(false); }}
+                  className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
+                >
+                  My Profile
+                </button>
+                <button
+                  onClick={() => auth.signOut()}
+                  className="w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-red-50"
+                >
+                  Log Out
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -153,9 +191,57 @@ export default function App() {
 
       {/* PROFILE PANEL */}
       {showProfile && (
-        <div id="profilePanel" style={{ display: 'block' }}>
-          <h3>Financial Profile <button className="close-btn" onClick={() => setShowProfile(false)}>✕</button></h3>
-          <div>
+        <>
+          {/* Mobile Overlay */}
+          <div 
+            className="fixed inset-0 bg-black/20 z-30 md:hidden"
+            onClick={() => setShowProfile(false)}
+          />
+          <div id="profilePanel" style={{ display: 'block' }}>
+            <h3>Financial Profile <button className="close-btn" onClick={() => setShowProfile(false)}>✕</button></h3>
+            <div>
+            <div className="profile-section">
+              <h4>Personal Info</h4>
+              <div className="profile-row">
+                <span className="key">Name</span>
+                <input
+                  defaultValue={profile.personal?.name || ''}
+                  onBlur={async (e) => {
+                    const newProfile = { ...profile, personal: { ...profile.personal, name: e.target.value }};
+                    await saveProfile(newProfile);
+                    showToast('✓ Saved');
+                  }}
+                  className="val border-b border-gray-200 bg-transparent text-right outline-none"
+                />
+              </div>
+              <div className="profile-row">
+                <span className="key">Age</span>
+                <input type="number" defaultValue={profile.personal?.age || ''}
+                  onBlur={async (e) => {
+                    const newProfile = { ...profile, personal: { ...profile.personal, age: Number(e.target.value) }};
+                    await saveProfile(newProfile);
+                    showToast('✓ Saved');
+                  }}
+                  className="val border-b border-gray-200 bg-transparent text-right outline-none w-16"
+                />
+              </div>
+              <div className="profile-row">
+                <span className="key">Risk Profile</span>
+                <select defaultValue={profile.personal?.riskProfile || 'moderate'}
+                  onChange={async (e) => {
+                    const newProfile = { ...profile, personal: { ...profile.personal, riskProfile: e.target.value as any }};
+                    await saveProfile(newProfile);
+                    showToast('✓ Saved');
+                  }}
+                  className="val bg-transparent text-right outline-none"
+                >
+                  <option value="conservative">Conservative</option>
+                  <option value="moderate">Moderate</option>
+                  <option value="aggressive">Aggressive</option>
+                </select>
+              </div>
+            </div>
+
             <FinancialSourceEditor 
               title="Income"
               type="income"
@@ -165,6 +251,7 @@ export default function App() {
                 finance.recalculateMetrics(newProfile);
                 setProfile(newProfile);
                 await saveProfile(newProfile);
+                showToast('✓ Saved');
               }}
             />
             <div className="profile-row font-bold mb-4 px-3"><span className="key">Total Monthly</span><span className="val">{fmt(finance.totalIncome(profile))}</span></div>
@@ -178,6 +265,7 @@ export default function App() {
                 finance.recalculateMetrics(newProfile);
                 setProfile(newProfile);
                 await saveProfile(newProfile);
+                showToast('✓ Saved');
               }}
             />
             <div className="profile-row font-bold mb-4 px-3"><span className="key">Total Monthly</span><span className="val">{fmt(finance.totalExpenses(profile))}</span></div>
@@ -200,6 +288,7 @@ export default function App() {
                 finance.recalculateMetrics(newProfile);
                 setProfile(newProfile);
                 await saveProfile(newProfile);
+                showToast('✓ Saved');
               }}
             />
             {finance.totalAssets(profile) === 0 && profile.portfolio.length === 0 && <div className="profile-row mb-4"><span className="key" style={{ color: '#ccc' }}>None added yet</span></div>}
@@ -210,6 +299,7 @@ export default function App() {
                   finance.recalculateMetrics(newProfile);
                   setProfile(newProfile);
                   saveProfile(newProfile);
+                  showToast('✓ Saved');
                 }} />
               </div>
             </div>
@@ -227,17 +317,49 @@ export default function App() {
                 finance.recalculateMetrics(newProfile);
                 setProfile(newProfile);
                 await saveProfile(newProfile);
+                showToast('✓ Saved');
               }}
             />
             <div className="profile-section">
               <h4>Goals</h4>
-              {(profile.goals || []).map((g, i) => <div key={i} className="profile-row"><span className="key">{g.name}</span><span className="val">{g.target > 0 ? fmt(g.target) : 'No target set'}</span></div>)}
+              {(profile.goals || []).map((g, i) => {
+                const progress = g.target > 0 ? Math.min(100, Math.round(((g.saved || 0) / g.target) * 100)) : 0;
+                return (
+                  <div key={i} className="mb-4">
+                    <div className="profile-row mb-1">
+                      <span className="key font-semibold">{g.name}</span>
+                      <span className="val text-sm">
+                        {fmt(g.saved || 0)} / {g.target > 0 ? fmt(g.target) : 'No target set'}
+                      </span>
+                    </div>
+                    {g.target > 0 && (
+                      <div className="w-full bg-gray-200 rounded-full h-2 mt-1">
+                        <div className="bg-lime h-2 rounded-full" style={{ width: `${progress}%` }}></div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
               {(profile.goals || []).length === 0 && <div className="profile-row"><span className="key" style={{ color: '#ccc' }}>No goals yet</span></div>}
             </div>
-            <div className="profile-section">
-              <h4>Risk Profile</h4>
-              <div className="profile-row"><span className="key">Appetite</span><span className="val">{profile.personal?.riskProfile ? profile.personal.riskProfile.charAt(0).toUpperCase() + profile.personal.riskProfile.slice(1) : 'Not set'}</span></div>
-            </div>
+
+            <FinancialSourceEditor 
+              title={`Subscriptions`}
+              type="expense"
+              sources={(profile.subscriptions || []).map(s => ({ name: `${s.name} (${s.billingCycle})`, value: s.cost }))}
+              onUpdate={async (sources) => {
+                const newSubs = sources.map(s => {
+                  const existing = (profile.subscriptions || []).find(sub => `${sub.name} (${sub.billingCycle})` === s.name);
+                  if (existing) return { ...existing, cost: s.value };
+                  return { name: s.name, cost: s.value, billingCycle: 'monthly' as const };
+                });
+                const newProfile = { ...profile, subscriptions: newSubs };
+                finance.recalculateMetrics(newProfile);
+                setProfile(newProfile);
+                await saveProfile(newProfile);
+                showToast('✓ Saved');
+              }}
+            />
             <div className="profile-section mt-6 pt-4 border-t border-gray-100">
               <h4 className="text-red-600">Account Settings</h4>
               <button 
@@ -264,6 +386,7 @@ export default function App() {
             </div>
           </div>
         </div>
+        </>
       )}
       {/* PREMIUM MODAL */}
       {showPremiumModal && (
@@ -302,6 +425,12 @@ export default function App() {
               I Understand
             </button>
           </div>
+        </div>
+      )}
+
+      {toast && (
+        <div className="fixed bottom-6 right-6 bg-gray-900 text-white text-sm px-4 py-2 rounded-xl shadow-lg z-50 animate-fade-in">
+          {toast}
         </div>
       )}
     </div>
