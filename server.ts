@@ -16,11 +16,20 @@ import { finance } from './src/finance.js';
 
 dotenv.config();
 
-const sdkArgs: any = {};
-if (process.env.GEMINI_API_KEY) {
-  sdkArgs.apiKey = process.env.GEMINI_API_KEY;
+if (!process.env.GEMINI_API_KEY) {
+  console.error('❌ GEMINI_API_KEY is missing');
 }
-const ai = new GoogleGenAI(sdkArgs);
+
+console.log(
+  'Gemini key loaded:',
+  process.env.GEMINI_API_KEY
+    ? `YES (${process.env.GEMINI_API_KEY.slice(0, 8)}...)`
+    : 'NO'
+);
+
+const ai = new GoogleGenAI({
+  apiKey: process.env.GEMINI_API_KEY || ''
+});
 
 const stripe: Stripe | null = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
 
@@ -212,6 +221,31 @@ async function startServer() {
     }
   });
 
+  app.get('/api/test-gemini', async (_, res) => {
+    try {
+      const response = await ai.models.generateContent({
+        model: GEMINI_MODEL,
+        contents: [
+          {
+            role: 'user',
+            parts: [{ text: 'Say hello' }]
+          }
+        ]
+      });
+
+      res.json({
+        success: true,
+        text: response.text
+      });
+    } catch (error: any) {
+      console.error(error);
+      res.status(500).json({
+        success: false,
+        error: error?.message
+      });
+    }
+  });
+
   const parseSchema = z.object({
     msg: z.string().max(2000),
     chatHistory: z.array(z.object({ role: z.string(), content: z.string() })).max(10).optional(),
@@ -323,8 +357,16 @@ Current profile limits clarification: If unclear whether user means per month or
       const data = JSON.parse(response.text || "{}");
       res.json(data);
     } catch (error: any) {
-      console.error('Parse error:', error);
-      res.status(500).json({ error: error.message || 'Parse failed' });
+      console.error('Gemini API Error:', {
+        message: error?.message,
+        status: error?.status,
+        stack: error?.stack
+      });
+      if (error?.message?.includes('API_KEY_INVALID') || error?.message?.includes('API key not valid')) {
+        res.status(500).json({ error: 'Gemini API key invalid' });
+      } else {
+        res.status(500).json({ error: 'AI request failed' });
+      }
     }
   });
 
@@ -436,8 +478,16 @@ CURRENT COPILOT ANALYSIS:
 
       res.json({ text: response.text });
     } catch (error: any) {
-      console.error('Respond error:', error);
-      res.status(500).json({ error: error.message || 'Respond failed' });
+      console.error('Gemini API Error:', {
+        message: error?.message,
+        status: error?.status,
+        stack: error?.stack
+      });
+      if (error?.message?.includes('API_KEY_INVALID') || error?.message?.includes('API key not valid')) {
+        res.status(500).json({ error: 'Gemini API key invalid' });
+      } else {
+        res.status(500).json({ error: 'AI request failed' });
+      }
     }
   });
 
