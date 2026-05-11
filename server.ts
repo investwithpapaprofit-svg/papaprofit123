@@ -221,7 +221,7 @@ async function startServer() {
     }
   });
 
-  app.get('/api/test-gemini', async (_, res) => {
+  app.get('/api/test-gemini', requireAuth, async (_, res) => {
     try {
       const response = await ai.models.generateContent({
         model: GEMINI_MODEL,
@@ -248,8 +248,7 @@ async function startServer() {
 
   const parseSchema = z.object({
     msg: z.string().max(2000),
-    chatHistory: z.array(z.object({ role: z.string(), content: z.string() })).max(10).optional(),
-    currentProfile: z.any().optional()
+    chatHistory: z.array(z.object({ role: z.string(), content: z.string() })).max(10).optional()
   });
 
   app.post('/api/ai/parse', requireAuth, aiLimiter, async (req, res) => {
@@ -374,15 +373,16 @@ Current profile limits clarification: If unclear whether user means per month or
     userMsg: z.string().max(2000).optional(),
     parsedData: z.any(),
     chatHistory: z.array(z.object({ role: z.string(), content: z.string() })).max(10),
-    onboardingStep: z.number().min(0).max(8).optional(),
-    currentProfile: z.any().optional()
+    onboardingStep: z.number().min(0).max(8).optional()
   });
 
   app.post('/api/ai/respond', requireAuth, aiLimiter, async (req, res) => {
     try {
-      const { parsedData, chatHistory, onboardingStep, currentProfile } = respondSchema.parse(req.body);
+      const { parsedData, chatHistory, onboardingStep } = respondSchema.parse(req.body);
       
-      const profile = currentProfile || {};
+      const uid = (req as any).user.uid;
+      const docSnap = await firestore.collection('users').doc(uid).get();
+      const profile = docSnap.exists ? (docSnap.data()?.profile || {}) : {};
       const fmt = (n: number) => `₹${(n||0).toLocaleString('en-IN')}`;
       const fhsScore = profile.metrics?.financialHealthScore || 0;
 
