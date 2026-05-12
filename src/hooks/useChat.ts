@@ -31,7 +31,6 @@ export function useChat(
     const userMsg = (text ?? input).trim();
     if (!userMsg) return;
     setInput('');
-    const previousAssistantMsg = chatHistory.findLast(m => m.role === 'ai')?.content;
     setChatHistory(h => [...h, { role: 'user', content: userMsg }]);
     setIsTyping(true);
 

@@ -31,17 +31,19 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 const stripe: Stripe | null = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
 
 // Test Gemini Connection
-(async () => {
-  try {
-    await ai.models.generateContent({
-      model: GEMINI_MODEL,
-      contents: [{ role: 'user', parts: [{ text: 'ping' }] }]
-    });
-    console.log('Gemini connected');
-  } catch (e) {
-    console.error('Gemini connection failed', e);
-  }
-})();
+if (process.env.NODE_ENV !== 'production') {
+  (async () => {
+    try {
+      await ai.models.generateContent({
+        model: GEMINI_MODEL,
+        contents: [{ role: 'user', parts: [{ text: 'ping' }] }]
+      });
+      console.log('Gemini connected');
+    } catch (e) {
+      console.error('Gemini connection failed', e);
+    }
+  })();
+}
 
 const appUrl = process.env.APP_URL || 'http://localhost:3000/';
 console.log('APP_URL:', appUrl);
@@ -209,7 +211,7 @@ async function startServer() {
     }
     try {
       const results = await yahooFinance.search(q);
-      const quotes = results.quotes.filter((q: any) => q.isYahooFinance || q.quoteType === 'EQUITY');
+      const quotes = (results as any).quotes ? (results as any).quotes.filter((q: any) => q.isYahooFinance || q.quoteType === 'EQUITY') : [];
       res.json(quotes.slice(0, 5));
     } catch (error: any) {
       console.error('Stock search error:', error.message || error);
@@ -390,8 +392,7 @@ Current profile limits clarification: If unclear whether user means per month or
     userMsg: z.string().max(2000).optional(),
     parsedData: z.any(),
     chatHistory: z.array(z.object({ role: z.string(), content: z.string() })).max(10),
-    onboardingStep: z.number().min(0).max(8).optional(),
-    profile: z.any().optional()
+    onboardingStep: z.number().min(0).max(8).optional()
   });
 
   app.post('/api/ai/respond', requireAuth, aiLimiter, async (req, res) => {
@@ -401,9 +402,11 @@ Current profile limits clarification: If unclear whether user means per month or
       });
     }
     try {
-      const { parsedData, chatHistory, onboardingStep, profile = {} } = respondSchema.parse(req.body);
+      const { parsedData, chatHistory, onboardingStep } = respondSchema.parse(req.body);
       
       const uid = (req as any).user.uid;
+      const docSnap = await firestore.collection('users').doc(uid).get();
+      const profile = docSnap.exists ? (docSnap.data()?.profile || {}) : {};
       const fmt = (n: number) => `₹${(n||0).toLocaleString('en-IN')}`;
       const fhsScore = profile.metrics?.financialHealthScore || 0;
 

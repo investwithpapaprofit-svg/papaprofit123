@@ -12,7 +12,7 @@ export const insights = {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ userMsg, parsedData, chatHistory, onboardingStep, profile })
+        body: JSON.stringify({ userMsg, parsedData, chatHistory, onboardingStep })
       });
       
       if (!response.ok) {

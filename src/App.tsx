@@ -30,6 +30,27 @@ export default function App() {
   const [toast, setToast] = useState<string | null>(null);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (
+        menuRef.current &&
+        !menuRef.current.contains(e.target as Node)
+      ) {
+        setShowUserMenu(false);
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside);
+
+    return () => {
+      document.removeEventListener(
+        'mousedown',
+        handleClickOutside
+      );
+    };
+  }, []);
 
   useEffect(() => {
     const goOnline = () => setIsOffline(false);
@@ -105,7 +126,6 @@ export default function App() {
   }
 
   const fhsScore = profile.metrics.financialHealthScore;
-  const fhsInfo = finance.fhsLabel(fhsScore);
 
   return (
     <div id="appShell">
@@ -143,7 +163,7 @@ export default function App() {
             </span>
           )}
 
-          <div className="relative">
+          <div ref={menuRef} className="relative">
             <div 
               className="avatar cursor-pointer" 
               onClick={() => setShowUserMenu(!showUserMenu)}

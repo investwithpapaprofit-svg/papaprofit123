@@ -44,7 +44,7 @@ export enum OperationType {
 export function handleFirestoreError(
   error: unknown,
   operationType: OperationType,
-  path: string | null
+  _path: string | null
 ) {
   if (!navigator.onLine) {
     throw new Error('You are offline. Check your internet connection.');
@@ -56,6 +56,6 @@ export function handleFirestoreError(
     throw new Error('Firestore permissions are not configured correctly.');
   }
 
-  throw new Error(`Firestore ${operationType} failed: ${message}`);
+  throw new Error(`Firestore ${operationType} failed`);
 }
 

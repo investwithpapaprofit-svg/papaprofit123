@@ -1,4 +1,4 @@
-import React from 'react';
+ 
 
 interface ChatInputProps {
   input: string;

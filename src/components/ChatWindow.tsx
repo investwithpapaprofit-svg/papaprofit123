@@ -10,7 +10,7 @@ interface ChatWindowProps {
   chatHistory: Message[];
   isTyping: boolean;
   formatMessage: (text: string) => string;
-  chatEndRef: React.RefObject<HTMLDivElement>;
+  chatEndRef: React.RefObject<HTMLDivElement | null>;
   userName?: string;
 }
 

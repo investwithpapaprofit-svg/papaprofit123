@@ -13,7 +13,6 @@ export function Sidebar({ profile, setShowPremiumModal }: SidebarProps) {
   const surplus = profile.metrics.monthlyCashFlow;
   const sr = profile.metrics.savingsRate;
   const dr = profile.metrics.debtToIncomeRatio;
-  const metricsInsights = profile.insights || [];
 
   const fmt = (n: number) => {
     if (!n || isNaN(n)) return '₹0';
