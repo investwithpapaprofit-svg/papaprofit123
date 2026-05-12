@@ -129,8 +129,12 @@ export function useProfile(user: User | null) {
         }
         setProfile(safeProfile);
       }
-    } catch (e) {
-      handleFirestoreError(e, OperationType.GET, `users/${user.uid}`);
+    } catch (e: any) {
+      if (e?.message?.includes('client is offline')) {
+         console.warn("Firestore client is offline, unable to load profile");
+      } else {
+         handleFirestoreError(e, OperationType.GET, `users/${user.uid}`);
+      }
     }
   }, [user]);
 
@@ -141,8 +145,12 @@ export function useProfile(user: User | null) {
     try {
       await setDoc(doc(db, 'users', user.uid), { profile: profileToSave }, { merge: true });
       setProfile(profileToSave);
-    } catch (e) {
-      handleFirestoreError(e, OperationType.WRITE, `users/${user.uid}`);
+    } catch (e: any) {
+      if (e?.message?.includes('client is offline')) {
+         console.warn("Firestore client is offline, unable to save profile");
+      } else {
+         handleFirestoreError(e, OperationType.WRITE, `users/${user.uid}`);
+      }
     }
   }, [user]);
 

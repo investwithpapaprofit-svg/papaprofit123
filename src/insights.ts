@@ -12,7 +12,7 @@ export const insights = {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ userMsg, parsedData, chatHistory, onboardingStep })
+        body: JSON.stringify({ userMsg, parsedData, chatHistory, onboardingStep, profile })
       });
       
       if (!response.ok) {
@@ -55,11 +55,25 @@ export const insights = {
 
       return finalResponse;
     } catch (e: any) {
-      console.error("AI Insights error:", e);
-      if (e.message?.includes('API key not valid') || e.message?.includes('API_KEY_INVALID')) {
-        return "⚠️ Configuration Error: The Gemini API key is invalid. Please check your settings.";
+      console.error('AI Insights error:', e);
+
+      if (
+        e.message?.includes('API key') ||
+        e.message?.includes('API_KEY_INVALID') ||
+        e.message?.includes('INVALID_ARGUMENT') ||
+        e.message?.includes('Gemini API key is invalid')
+      ) {
+        return 'Gemini API key is invalid.';
       }
-      return "Sorry, I had trouble connecting. Please try again in a moment.";
+
+      if (
+        e.message?.includes('offline') ||
+        e.message?.includes('network')
+      ) {
+        return 'You appear to be offline.';
+      }
+
+      return 'Sorry, the AI is temporarily unavailable. Please try again.';
     }
   }
 };

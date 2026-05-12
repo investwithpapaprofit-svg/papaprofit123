@@ -28,7 +28,21 @@ export default function App() {
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const goOnline = () => setIsOffline(false);
+    const goOffline = () => setIsOffline(true);
+
+    window.addEventListener('online', goOnline);
+    window.addEventListener('offline', goOffline);
+
+    return () => {
+      window.removeEventListener('online', goOnline);
+      window.removeEventListener('offline', goOffline);
+    };
+  }, []);
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -95,6 +109,19 @@ export default function App() {
 
   return (
     <div id="appShell">
+      {import.meta.env.DEV && (
+        <div className="fixed bottom-4 left-4 bg-gray-900 text-white text-[10px] p-2 rounded z-[100] flex flex-col gap-1 shadow-lg opacity-80 hover:opacity-100 transition-opacity">
+          <div className="font-bold border-b border-gray-700 pb-1 mb-1">PapaProfit Config</div>
+          <div>{import.meta.env.VITE_FIREBASE_API_KEY ? '✅ VITE_FIREBASE_API_KEY' : '❌ VITE_FIREBASE_API_KEY Missing'}</div>
+          <div>{auth && auth.app ? '✅ Firebase loaded' : '❌ Firebase failed'}</div>
+          <div>{navigator.onLine ? '✅ Network online' : '❌ Network offline'}</div>
+        </div>
+      )}
+      {isOffline && (
+        <div className="fixed top-0 left-0 right-0 bg-yellow-500 text-black text-center text-sm py-2 z-50">
+          You are offline. Changes will sync automatically when reconnected.
+        </div>
+      )}
       <div className="topbar">
         <div className="topbar-logo"><span className="w-2 h-2 rounded-full bg-lime shadow-[0_0_8px_var(--color-lime)] animate-pulse"></span> PapaProfit</div>
         <div className="topbar-right">

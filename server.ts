@@ -1,8 +1,9 @@
+import dotenv from 'dotenv';
+dotenv.config();
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import yahooFinance from 'yahoo-finance2';
-import dotenv from 'dotenv';
 import admin from 'firebase-admin';
 import { getFirestore } from 'firebase-admin/firestore';
 import fs from 'fs';
@@ -13,8 +14,6 @@ import Stripe from 'stripe';
 import { ONBOARDING_QUESTIONS, GEMINI_MODEL } from './src/constants.js';
 import { GoogleGenAI, Type } from '@google/genai';
 import { finance } from './src/finance.js';
-
-dotenv.config();
 
 if (!process.env.GEMINI_API_KEY) {
   console.error('❌ GEMINI_API_KEY is missing');
@@ -27,11 +26,22 @@ console.log(
     : 'NO'
 );
 
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY || ''
-});
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 const stripe: Stripe | null = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
+
+// Test Gemini Connection
+(async () => {
+  try {
+    await ai.models.generateContent({
+      model: GEMINI_MODEL,
+      contents: [{ role: 'user', parts: [{ text: 'ping' }] }]
+    });
+    console.log('Gemini connected');
+  } catch (e) {
+    console.error('Gemini connection failed', e);
+  }
+})();
 
 const appUrl = process.env.APP_URL || 'http://localhost:3000/';
 console.log('APP_URL:', appUrl);
@@ -252,6 +262,11 @@ async function startServer() {
   });
 
   app.post('/api/ai/parse', requireAuth, aiLimiter, async (req, res) => {
+    if (!process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === 'YOUR_GEMINI_KEY') {
+      return res.status(500).json({
+        error: 'Gemini API key missing on server'
+      });
+    }
     try {
       const { msg, chatHistory = [] } = parseSchema.parse(req.body);
       const previousAssistantMsg = chatHistory.filter((m: any) => m.role === 'ai').at(-1)?.content;
@@ -353,7 +368,9 @@ Current profile limits clarification: If unclear whether user means per month or
           }
         }
       });
-      const data = JSON.parse(response.text || "{}");
+      const rawText = response.text || "{}";
+      const cleanText = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
+      const data = JSON.parse(cleanText);
       res.json(data);
     } catch (error: any) {
       console.error('Gemini API Error:', {
@@ -361,8 +378,8 @@ Current profile limits clarification: If unclear whether user means per month or
         status: error?.status,
         stack: error?.stack
       });
-      if (error?.message?.includes('API_KEY_INVALID') || error?.message?.includes('API key not valid')) {
-        res.status(500).json({ error: 'Gemini API key invalid' });
+      if (error?.message?.includes('API_KEY_INVALID') || error?.message?.includes('API key not valid') || error?.message?.includes('INVALID_ARGUMENT')) {
+        res.status(500).json({ error: 'Gemini API key is invalid.' });
       } else {
         res.status(500).json({ error: 'AI request failed' });
       }
@@ -373,16 +390,20 @@ Current profile limits clarification: If unclear whether user means per month or
     userMsg: z.string().max(2000).optional(),
     parsedData: z.any(),
     chatHistory: z.array(z.object({ role: z.string(), content: z.string() })).max(10),
-    onboardingStep: z.number().min(0).max(8).optional()
+    onboardingStep: z.number().min(0).max(8).optional(),
+    profile: z.any().optional()
   });
 
   app.post('/api/ai/respond', requireAuth, aiLimiter, async (req, res) => {
+    if (!process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === 'YOUR_GEMINI_KEY') {
+      return res.status(500).json({
+        error: 'Gemini API key missing on server'
+      });
+    }
     try {
-      const { parsedData, chatHistory, onboardingStep } = respondSchema.parse(req.body);
+      const { parsedData, chatHistory, onboardingStep, profile = {} } = respondSchema.parse(req.body);
       
       const uid = (req as any).user.uid;
-      const docSnap = await firestore.collection('users').doc(uid).get();
-      const profile = docSnap.exists ? (docSnap.data()?.profile || {}) : {};
       const fmt = (n: number) => `₹${(n||0).toLocaleString('en-IN')}`;
       const fhsScore = profile.metrics?.financialHealthScore || 0;
 
@@ -483,8 +504,8 @@ CURRENT COPILOT ANALYSIS:
         status: error?.status,
         stack: error?.stack
       });
-      if (error?.message?.includes('API_KEY_INVALID') || error?.message?.includes('API key not valid')) {
-        res.status(500).json({ error: 'Gemini API key invalid' });
+      if (error?.message?.includes('API_KEY_INVALID') || error?.message?.includes('API key not valid') || error?.message?.includes('INVALID_ARGUMENT')) {
+        res.status(500).json({ error: 'Gemini API key is invalid.' });
       } else {
         res.status(500).json({ error: 'AI request failed' });
       }
