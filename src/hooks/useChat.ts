@@ -21,11 +21,11 @@ export function useChat(
         setOnboardingStep(1);
         setChatHistory([{ role: 'ai', content: ONBOARDING_QUESTIONS[0] }]);
       } else {
-        const welcomeMsg = `**Welcome back to PapaProfit, ${auth.currentUser.displayName?.split(' ')[0]}! 👋**\n\nI'm ready to help you manage your finances. Your current net worth is **₹${profile.metrics.netWorth.toLocaleString('en-IN')}**.\n\nWhat would you like to focus on today?`;
+        const welcomeMsg = `**Welcome back to PapaProfit, ${auth.currentUser.displayName?.split(' ')[0]}! 👋**\n\nI'm ready to help you manage your finances. Your current net worth is **₹${profile.metrics?.netWorth?.toLocaleString('en-IN') ?? '0'}**.\n\nWhat would you like to focus on today?`;
         setChatHistory([{ role: 'ai', content: welcomeMsg }]);
       }
     }
-  }, [profile.onboardingCompleted, profile.lastUpdated, auth.currentUser]); // Use profile.lastUpdated to detect when data is initially loaded
+  }, [profile.onboardingCompleted, profile.lastUpdated]); // Removed auth.currentUser as it's not reactive
 
   const handleSend = useCallback(async (text?: string) => {
     const userMsg = (text ?? input).trim();
@@ -34,7 +34,7 @@ export function useChat(
     setChatHistory(h => [...h, { role: 'user', content: userMsg }]);
     setIsTyping(true);
 
-    const isFrustrated = /beat|shit|fuck|stupid|dumb|annoying|wrong|random|niga|bs|listening/i.test(userMsg);
+    const isFrustrated = /\b(fuck|shit|stupid|dumb|bs)\b/i.test(userMsg);
     const isSkipRequest = /skip|stop|don't ask|dont ask|just chat/i.test(userMsg);
 
     try {
