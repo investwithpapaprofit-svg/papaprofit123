@@ -256,57 +256,15 @@ async function startServer() {
       const { msg, chatHistory = [] } = parseSchema.parse(req.body);
       const previousAssistantMsg = chatHistory.filter((m: any) => m.role === 'ai').at(-1)?.content;
 
-      const systemCtx = `Parse financial input.
-      
-CRITICAL CONTEXT RULE:
-The user's latest message must be interpreted in the context of the assistant's previous question. 
-
-Examples:
-
-Assistant: "What's your monthly expense roughly?"
-User: "around 80000"
-
-Interpretation:
-{
-  "expenses": [{ "name": "Monthly Expenses", "value": 80000 }],
-  "clarificationNeeded": false
-}
-
-Assistant: "How much do you have invested?"
-User: "5 lakhs"
-
-Interpretation:
-{
-  "assets": [{ "name": "Investments", "value": 500000 }]
-}
-
-Assistant: "Any loans?"
-User: "2 lakh car loan"
-
-Interpretation:
-{
-  "loans": [{ "name": "Car Loan", "amount": 200000 }]
-}
-
-Do NOT ask for clarification if the assistant's previous message already clearly establishes the category being discussed.
-Short numeric replies like "80k", "around 50k", "2 lakh", "yes", "no" must inherit context from the previous assistant message.
-
-Current profile limits clarification: If unclear whether user means per month or year, add clarificationNeeded: true and provide clarificationMessage. Extract numeric values completely. Map intents to: ['income', 'expense', 'subscription', 'loan', 'asset', 'portfolio', 'goal', 'general']. If multiple apply, pick the primary one or general. Output strict JSON fitting the schema.`;
-
-      const contents: any[] = [];
-      if (previousAssistantMsg) {
-        contents.push({ role: 'model', parts: [{ text: previousAssistantMsg }] });
-      }
-      contents.push({ role: 'user', parts: [{ text: msg }] });
-
       const completion = await groq.chat.completions.create({
         model: 'llama-3.3-70b-versatile',
         messages: [
           {
             role: 'system',
-            content: `You are a financial data extraction engine. Extract financial entities from the user message and return ONLY a valid JSON object with these fields: intent (string), confidenceScore (number 0-1), clarificationNeeded (boolean), clarificationMessage (string), extracted_data (object containing any of: personal, incomeSources, expenses, subscriptions, loans, assets, portfolio, goals). No markdown, no explanation, just JSON.`
+            content: `You are a financial data extraction engine. Extract financial entities from the user message and return ONLY a valid JSON object with these fields: intent (string), confidenceScore (number 0-1), clarificationNeeded (boolean), clarificationMessage (string), extracted_data (object containing any of: personal, incomeSources, expenses, subscriptions, loans, assets, portfolio, goals). Use the assistant's previous message as context to interpret short replies like "80k" or "yes". No markdown, no explanation, just JSON.`
           },
-          { role: 'user', content: msg }
+          ...(previousAssistantMsg ? [{ role: 'assistant' as const, content: previousAssistantMsg }] : []),
+          { role: 'user' as const, content: msg }
         ],
         max_tokens: 1000,
         temperature: 0.1
@@ -321,16 +279,8 @@ Current profile limits clarification: If unclear whether user means per month or
       }
       res.json(data);
     } catch (error: any) {
-      console.error('Gemini API Error:', {
-        message: error?.message,
-        status: error?.status,
-        stack: error?.stack
-      });
-      if (error?.message?.includes('API_KEY_INVALID') || error?.message?.includes('API key not valid') || error?.message?.includes('INVALID_ARGUMENT')) {
-        res.status(500).json({ error: 'Gemini API key is invalid.' });
-      } else {
-        res.status(500).json({ error: 'AI request failed' });
-      }
+      console.error('Groq API Error:', error?.message);
+      res.status(500).json({ error: 'AI request failed. Please try again.' });
     }
   });
 
@@ -448,7 +398,6 @@ CURRENT COPILOT ANALYSIS:
           { role: 'system', content: systemCtx },
           ...formattedMessages.slice(-6).map((m: any) => ({
             role: m.role === 'user' ? 'user' : 'assistant',
-            parts: undefined,
             content: m.parts?.[0]?.text || m.content || ''
           }))
         ],
@@ -458,16 +407,8 @@ CURRENT COPILOT ANALYSIS:
       const text = completion.choices[0]?.message?.content || 'Sorry, I had trouble responding. Please try again.';
       res.json({ text });
     } catch (error: any) {
-      console.error('Gemini API Error:', {
-        message: error?.message,
-        status: error?.status,
-        stack: error?.stack
-      });
-      if (error?.message?.includes('API_KEY_INVALID') || error?.message?.includes('API key not valid') || error?.message?.includes('INVALID_ARGUMENT')) {
-        res.status(500).json({ error: 'Gemini API key is invalid.' });
-      } else {
-        res.status(500).json({ error: 'AI request failed' });
-      }
+      console.error('Groq API Error:', error?.message);
+      res.status(500).json({ error: 'AI request failed. Please try again.' });
     }
   });
 
