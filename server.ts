@@ -11,60 +11,45 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import Stripe from 'stripe';
-import { ONBOARDING_QUESTIONS, GEMINI_MODEL } from './src/constants.js';
-import { GoogleGenAI, Type } from '@google/genai';
+import { ONBOARDING_QUESTIONS } from './src/constants.js';
 import { finance } from './src/finance.js';
+import Groq from 'groq-sdk';
 
-if (!process.env.GEMINI_API_KEY) {
-  console.error('❌ GEMINI_API_KEY is missing');
+const groqKey = process.env.GROQ_API_KEY || '';
+if (!groqKey) {
+  console.error('❌ FATAL: No Groq API key found in GROQ_API_KEY environment variable.');
 }
 
-console.log(
-  'Gemini key loaded:',
-  process.env.GEMINI_API_KEY
-    ? `YES (${process.env.GEMINI_API_KEY.slice(0, 8)}...)`
-    : 'NO'
-);
+console.log('Checking API key sources:');
+console.log('  GROQ_API_KEY:', process.env.GROQ_API_KEY ? '✅' : '❌');
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const groq = new Groq({
+  apiKey: process.env.GROQ_API_KEY || ''
+});
 
 const stripe: Stripe | null = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
-
-// Test Gemini Connection
-if (process.env.NODE_ENV !== 'production') {
-  (async () => {
-    try {
-      await ai.models.generateContent({
-        model: GEMINI_MODEL,
-        contents: [{ role: 'user', parts: [{ text: 'ping' }] }]
-      });
-      console.log('Gemini connected');
-    } catch (e) {
-      console.error('Gemini connection failed', e);
-    }
-  })();
-}
 
 const appUrl = process.env.APP_URL || 'http://localhost:3000/';
 console.log('APP_URL:', appUrl);
 
 let firestore: any;
 
-// Initialize Firebase Admin
-const firebaseConfigPath = path.join(process.cwd(), 'firebase-applet-config.json');
-if (fs.existsSync(firebaseConfigPath)) {
-  const config = JSON.parse(fs.readFileSync(firebaseConfigPath, 'utf-8'));
-  const adminApp = admin.initializeApp({
-    projectId: config.projectId,
-  });
-  firestore = getFirestore(adminApp, config.firestoreDatabaseId);
-} else {
-  try {
-    firestore = admin.firestore();
-  } catch (e) {
-    console.error("Firebase admin init error", e);
-  }
+try {
+  const projectId = process.env.FIREBASE_PROJECT_ID || 'papaprofit-7aa7e';
+  const dbId = process.env.FIREBASE_DATABASE_ID || '(default)';
+  const adminApp = admin.initializeApp({ projectId });
+  firestore = getFirestore(adminApp, dbId);
+  console.log(`✅ Firebase Admin initialized. Project: ${projectId}, DB: ${dbId}`);
+} catch (e: any) {
+  console.error('❌ Firebase Admin init failed:', e.message);
 }
+
+// Startup diagnostics — shows in server logs
+console.log('=== PapaProfit Server Startup ===');
+console.log('Groq key:', groqKey ? `✅ Set (${groqKey.slice(0, 8)}...)` : '❌ MISSING');
+console.log('Stripe:', process.env.STRIPE_SECRET_KEY ? '✅ Set' : '⚠️  Not set (payments disabled)');
+console.log('Firestore:', firestore ? '✅ Initialized' : '❌ FAILED');
+console.log('================================');
 
 // Authentication Middleware
 const requireAuth = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -142,12 +127,16 @@ async function startServer() {
         const uid = session.client_reference_id; // Pass firebase UID when creating checkout session
 
         if (uid) {
-          await firestore.collection('users').doc(uid).set({
-            profile: {
-              isPremium: true
-            }
-          }, { merge: true });
-          console.log(`Premium activated via webhook for user: ${uid}`);
+          try {
+            await firestore.collection('users').doc(uid).set({
+              profile: {
+                isPremium: true
+              }
+            }, { merge: true });
+            console.log(`Premium activated via webhook for user: ${uid}`);
+          } catch (err: any) {
+             console.error("Firestore set error in webhook:", err.message);
+          }
         }
       }
 
@@ -233,21 +222,16 @@ async function startServer() {
     }
   });
 
-  app.get('/api/test-gemini', requireAuth, async (_, res) => {
+  app.get('/api/test-groq', requireAuth, async (_, res) => {
     try {
-      const response = await ai.models.generateContent({
-        model: GEMINI_MODEL,
-        contents: [
-          {
-            role: 'user',
-            parts: [{ text: 'Say hello' }]
-          }
-        ]
+      const completion = await groq.chat.completions.create({
+        model: 'llama-3.3-70b-versatile',
+        messages: [{ role: 'user', content: 'Say hello' }]
       });
 
       res.json({
         success: true,
-        text: response.text
+        text: completion.choices[0]?.message?.content
       });
     } catch (error: any) {
       console.error(error);
@@ -264,10 +248,9 @@ async function startServer() {
   });
 
   app.post('/api/ai/parse', requireAuth, aiLimiter, async (req, res) => {
-    if (!process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === 'YOUR_GEMINI_KEY') {
-      return res.status(500).json({
-        error: 'Gemini API key missing on server'
-      });
+    const activeKey = process.env.GROQ_API_KEY || '';
+    if (!activeKey || activeKey === 'YOUR_GROQ_KEY') {
+      return res.status(500).json({ error: 'Groq API key not configured' });
     }
     try {
       const { msg, chatHistory = [] } = parseSchema.parse(req.body);
@@ -316,63 +299,26 @@ Current profile limits clarification: If unclear whether user means per month or
       }
       contents.push({ role: 'user', parts: [{ text: msg }] });
 
-      const response = await ai.models.generateContent({
-        model: GEMINI_MODEL,
-        contents,
-        config: {
-          systemInstruction: systemCtx,
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              intent: { type: Type.STRING },
-              confidenceScore: { type: Type.NUMBER },
-              clarificationNeeded: { type: Type.BOOLEAN },
-              clarificationMessage: { type: Type.STRING },
-              extracted_data: {
-                type: Type.OBJECT,
-                properties: {
-                  personal: {
-                    type: Type.OBJECT,
-                    properties: { name: { type: Type.STRING }, age: { type: Type.NUMBER }, riskProfile: { type: Type.STRING } }
-                  },
-                  incomeSources: {
-                    type: Type.ARRAY,
-                    items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, value: { type: Type.NUMBER } } }
-                  },
-                  expenses: {
-                    type: Type.ARRAY,
-                    items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, value: { type: Type.NUMBER }, category: { type: Type.STRING } } }
-                  },
-                  subscriptions: {
-                    type: Type.ARRAY,
-                    items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, cost: { type: Type.NUMBER }, billingCycle: { type: Type.STRING } } }
-                  },
-                  loans: {
-                    type: Type.ARRAY,
-                    items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, amount: { type: Type.NUMBER }, rate: { type: Type.NUMBER }, emi: { type: Type.NUMBER } } }
-                  },
-                  assets: {
-                    type: Type.ARRAY,
-                    items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, value: { type: Type.NUMBER }, type: { type: Type.STRING }, mortgageable: { type: Type.BOOLEAN } } }
-                  },
-                  portfolio: {
-                    type: Type.ARRAY,
-                    items: { type: Type.OBJECT, properties: { symbol: { type: Type.STRING }, name: { type: Type.STRING }, quantity: { type: Type.NUMBER }, averageBuyPrice: { type: Type.NUMBER }, assetType: { type: Type.STRING } } }
-                  },
-                  goals: {
-                    type: Type.ARRAY,
-                    items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, target: { type: Type.NUMBER }, months: { type: Type.NUMBER }, type: { type: Type.STRING }, saved: { type: Type.NUMBER } } }
-                  }
-                }
-              }
-            }
-          }
-        }
+      const completion = await groq.chat.completions.create({
+        model: 'llama-3.3-70b-versatile',
+        messages: [
+          {
+            role: 'system',
+            content: `You are a financial data extraction engine. Extract financial entities from the user message and return ONLY a valid JSON object with these fields: intent (string), confidenceScore (number 0-1), clarificationNeeded (boolean), clarificationMessage (string), extracted_data (object containing any of: personal, incomeSources, expenses, subscriptions, loans, assets, portfolio, goals). No markdown, no explanation, just JSON.`
+          },
+          { role: 'user', content: msg }
+        ],
+        max_tokens: 1000,
+        temperature: 0.1
       });
-      const rawText = response.text || "{}";
+      const rawText = completion.choices[0]?.message?.content || '{}';
       const cleanText = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
-      const data = JSON.parse(cleanText);
+      let data: any = {};
+      try {
+        data = JSON.parse(cleanText);
+      } catch {
+        data = { intent: 'general', confidenceScore: 0.5, clarificationNeeded: false, extracted_data: {} };
+      }
       res.json(data);
     } catch (error: any) {
       console.error('Gemini API Error:', {
@@ -396,17 +342,21 @@ Current profile limits clarification: If unclear whether user means per month or
   });
 
   app.post('/api/ai/respond', requireAuth, aiLimiter, async (req, res) => {
-    if (!process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === 'YOUR_GEMINI_KEY') {
-      return res.status(500).json({
-        error: 'Gemini API key missing on server'
-      });
+    const activeKey = process.env.GROQ_API_KEY || '';
+    if (!activeKey || activeKey === 'YOUR_GROQ_KEY') {
+      return res.status(500).json({ error: 'Groq API key not configured' });
     }
     try {
       const { parsedData, chatHistory, onboardingStep } = respondSchema.parse(req.body);
       
       const uid = (req as any).user.uid;
-      const docSnap = await firestore.collection('users').doc(uid).get();
-      const profile = docSnap.exists ? (docSnap.data()?.profile || {}) : {};
+      let profile: any = {};
+      try {
+        const docSnap = await firestore.collection('users').doc(uid).get();
+        profile = docSnap.exists ? (docSnap.data()?.profile || {}) : {};
+      } catch (err: any) {
+        console.error("Firestore get error:", err.message);
+      }
       const fmt = (n: number) => `₹${(n||0).toLocaleString('en-IN')}`;
       const fhsScore = profile.metrics?.financialHealthScore || 0;
 
@@ -492,15 +442,21 @@ CURRENT COPILOT ANALYSIS:
 - Parsing Intent: ${parsedData?.intent || 'general'}
 - Recommended Action: ${finance.getNextBestAction(profile)}`;
 
-      const response = await ai.models.generateContent({
-        model: GEMINI_MODEL,
-        contents: formattedMessages,
-        config: {
-          systemInstruction: systemCtx
-        }
+      const completion = await groq.chat.completions.create({
+        model: 'llama-3.3-70b-versatile',
+        messages: [
+          { role: 'system', content: systemCtx },
+          ...formattedMessages.slice(-6).map((m: any) => ({
+            role: m.role === 'user' ? 'user' : 'assistant',
+            parts: undefined,
+            content: m.parts?.[0]?.text || m.content || ''
+          }))
+        ],
+        max_tokens: 600,
+        temperature: 0.7
       });
-
-      res.json({ text: response.text });
+      const text = completion.choices[0]?.message?.content || 'Sorry, I had trouble responding. Please try again.';
+      res.json({ text });
     } catch (error: any) {
       console.error('Gemini API Error:', {
         message: error?.message,
