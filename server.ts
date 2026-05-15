@@ -295,7 +295,8 @@ Example output format: {"intent":"general","confidenceScore":0.9,"clarificationN
       res.json(data);
     } catch (error: any) {
       console.error('Groq API Error:', error?.message);
-      res.status(500).json({ error: 'AI request failed. Please try again.' });
+      const status = error.status || error.response?.status || 500;
+      res.status(status).json({ error: error.message || 'AI request failed' });
     }
   });
 
@@ -422,7 +423,8 @@ CURRENT COPILOT ANALYSIS:
       res.json({ text });
     } catch (error: any) {
       console.error('Groq API Error:', error?.message);
-      res.status(500).json({ error: 'AI request failed. Please try again.' });
+      const status = error.status || error.response?.status || 500;
+      res.status(status).json({ error: error.message || 'AI request failed' });
     }
   });
 

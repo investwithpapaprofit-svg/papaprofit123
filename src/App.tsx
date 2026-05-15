@@ -418,11 +418,11 @@ export default function App() {
                         const { deleteDoc, doc } = await import('firebase/firestore');
                         await deleteDoc(doc(db, 'users', user.uid));
                         await deleteUser(user);
-                        alert("Account deleted.");
+                        showToast("Account deleted.");
                       }
                     } catch(err) {
                       console.error(err);
-                      alert("Please log out and log back in to delete your account.");
+                      showToast("Please log out and log back in to delete your account.");
                     }
                   }
                 }}

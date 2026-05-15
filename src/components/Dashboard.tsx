@@ -3,8 +3,6 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend
 } from 'recharts';
-import html2canvas from 'html2canvas';
-import { jsPDF } from 'jspdf';
 import { useState } from 'react';
 
 interface DashboardProps {
@@ -14,13 +12,20 @@ interface DashboardProps {
 export function Dashboard({ profile }: DashboardProps) {
   const COLORS = ['#22c55e', '#0891b2', '#f59e0b', '#7c3aed', '#6b7280'];
   const [isExporting, setIsExporting] = useState(false);
+  const [exportError, setExportError] = useState('');
 
   const exportPDF = async () => {
     const dashboardElement = document.getElementById('dashboard-export-area');
     if (!dashboardElement) return;
 
     setIsExporting(true);
+    setExportError('');
     try {
+      const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+        import('html2canvas'),
+        import('jspdf')
+      ]);
+
       const canvas = await html2canvas(dashboardElement, { scale: 2 });
       const imgData = canvas.toDataURL('image/png');
       const pdf = new jsPDF('p', 'mm', 'a4');
@@ -31,7 +36,7 @@ export function Dashboard({ profile }: DashboardProps) {
       pdf.save('PapaProfit_Financial_Report.pdf');
     } catch (err) {
       console.error("Export PDF failed:", err);
-      alert("Failed to export PDF.");
+      setExportError("Failed to export PDF.");
     } finally {
       setIsExporting(false);
     }
@@ -78,7 +83,7 @@ export function Dashboard({ profile }: DashboardProps) {
 
   return (
     <div id="dashboard-export-area" className="p-6 bg-w rounded-[14px] shadow-[0_2px_20px_rgba(6,61,30,.08)] border-[1.5px] border-faint flex flex-col gap-6 relative">
-      <div className="absolute top-4 right-4 z-10">
+      <div className="absolute top-4 right-4 z-10 flex flex-col items-end gap-2">
         <button 
           onClick={exportPDF}
           disabled={isExporting}
@@ -86,6 +91,7 @@ export function Dashboard({ profile }: DashboardProps) {
         >
           {isExporting ? 'Exporting...' : 'Export Report'}
         </button>
+        {exportError && <div className="text-red-500 text-xs bg-red-50 px-2 py-1 rounded">{exportError}</div>}
       </div>
       
       <div className="grid grid-cols-2 gap-[14px] mt-8">
@@ -99,6 +105,26 @@ export function Dashboard({ profile }: DashboardProps) {
             {surplus >= 0 ? '+' : ''}{fmt(surplus)}
           </div>
         </div>
+      </div>
+
+      <div className="mt-4 border-t-[1.5px] border-faint pt-6">
+          <h4 className="text-[0.62rem] font-bold tracking-[0.1em] uppercase text-ghost mb-4">Financial Health Score</h4>
+          <div className="flex items-center gap-4">
+              <div className="text-4xl font-serif text-forest">{profile.metrics.financialHealthScore || 0} <span className="text-lg text-gray-400">/ 100</span></div>
+              <div className="flex-1 bg-gray-100 rounded-full h-3">
+                  <div className={`h-3 rounded-full transition-all ${profile.metrics.financialHealthScore >= 80 ? 'bg-green-500' : profile.metrics.financialHealthScore >= 50 ? 'bg-yellow-500' : 'bg-red-500'}`} style={{ width: `${profile.metrics.financialHealthScore || 0}%` }}></div>
+              </div>
+          </div>
+          <div className="mt-4 text-sm text-gray-600 bg-gray-50 border border-gray-100 rounded-lg p-3">
+             <div className="font-semibold text-gray-800 mb-1">How is this calculated?</div>
+             Your score reflects your savings rate, debt-to-income ratio, emergency fund, and investment consistency. 
+             {profile.metrics.savingsRate < 20 ? " Try to increase your savings pattern to improve this score." : 
+               profile.metrics.emergencyFundRunwayMonths < 6 ? " Building a larger emergency fund will boost your score." :
+               " You are doing great! Keep investing your surplus."}
+             <br/>
+             <div className="font-semibold text-gray-800 mt-2 mb-1">Next Action:</div>
+             <div>{profile.metrics.financialHealthScore >= 0 ? "Review the AI Copilot recommendations to maximize your score." : "Complete your profile."}</div>
+          </div>
       </div>
 
       {historyData.length > 1 && (
@@ -157,19 +183,45 @@ export function Dashboard({ profile }: DashboardProps) {
             {profile.goals.map((g, i) => {
               const pct = g.target > 0 ? Math.min(100, Math.round((g.saved / g.target) * 100)) : 0;
               return (
-                <div key={i} className="flex flex-col gap-2">
+                <div key={i} className="flex flex-col gap-2 p-3 bg-gray-50 rounded-lg border border-gray-100">
                   <div className="flex justify-between text-sm">
                     <span className="font-semibold text-gray-800">{g.name}</span>
                     <span className="text-gray-500">{fmtShort(g.saved)} / {fmtShort(g.target)} ({pct}%)</span>
                   </div>
-                  <div className="w-full bg-gray-100 rounded-full h-2">
+                  <div className="w-full bg-gray-200 rounded-full h-2">
                     <div className="bg-[#1a7a4a] h-2 rounded-full transition-all duration-1000 ease-out" style={{ width: `${pct}%` }}></div>
+                  </div>
+                  <div className="text-xs text-gray-500 mt-1 flex justify-between">
+                     <span>Needed: {fmt(g.monthlyNeeded || 0)} / month</span>
+                     {g.probabilityOfSuccess && g.probabilityOfSuccess >= 0.8 ? <span className="text-green-600 font-semibold">On Track</span> : <span className="text-orange-500 font-semibold">Needs Attention</span>}
                   </div>
                 </div>
               );
             })}
           </div>
         </div>
+      )}
+
+      {profile.loans && profile.loans.length > 0 && (
+          <div className="mt-4 border-t border-gray-100 pt-6">
+             <h4 className="text-sm font-semibold text-gray-700 mb-4">Debt Payoff Planner</h4>
+             <div className="space-y-3">
+             {profile.loans.slice().sort((a,b) => b.rate - a.rate).map((l, i) => (
+                 <div key={i} className="p-3 bg-red-50 rounded border border-red-100 flex items-center justify-between">
+                     <div>
+                         <div className="font-semibold text-red-900 text-sm">{l.name}</div>
+                         <div className="text-xs text-red-700 mt-0.5">Amount: {fmt(l.amount)} • Rate: {l.rate}% • EMI: {fmt(l.emi || 0)}</div>
+                     </div>
+                     {i === 0 && (
+                         <div className="bg-red-600 text-white text-[0.65rem] px-2 py-1 rounded font-bold uppercase tracking-wider shadow-sm">Pay First</div>
+                     )}
+                 </div>
+             ))}
+             </div>
+             <div className="mt-3 text-xs text-gray-500 italic">
+                 * Avalanche strategy recommends paying extra towards the highest-interest debt first to save the most money over time.
+             </div>
+          </div>
       )}
 
     </div>

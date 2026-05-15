@@ -1,3 +1,5 @@
+import { useState } from 'react';
+
 interface PremiumModalProps {
   onUpgrade: () => void;
   onClose: () => void;
@@ -5,6 +7,8 @@ interface PremiumModalProps {
 }
 
 export function PremiumModal({ onUpgrade, onClose, user }: PremiumModalProps) {
+  const [errorMsg, setErrorMsg] = useState('');
+  
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 shadow-2xl">
       <div className="bg-white rounded-2xl p-8 max-w-sm w-full relative">
@@ -45,8 +49,11 @@ export function PremiumModal({ onUpgrade, onClose, user }: PremiumModalProps) {
           <p className="text-xs text-gray-500">Cancel anytime. Billed monthly.</p>
         </div>
         
+        {errorMsg && <div className="text-red-500 text-sm mb-4 text-center">{errorMsg}</div>}
+        
         <button 
           onClick={async () => {
+             setErrorMsg('');
              if (!user) return;
              try {
                const idToken = await user.getIdToken();
@@ -67,11 +74,11 @@ export function PremiumModal({ onUpgrade, onClose, user }: PremiumModalProps) {
                    }
                  }
                } else {
-                 alert("Failed to upgrade. Please try again.");
+                 setErrorMsg("Failed to upgrade. Please try again.");
                }
              } catch (e) {
                console.error("Upgrade failed:", e);
-               alert("Upgrade failed. Please try again.");
+               setErrorMsg("Upgrade failed. Please try again.");
              }
           }}
           className="w-full bg-[#1a7a4a] text-white py-3 rounded-xl font-semibold hover:bg-[#145c37] transition-colors"

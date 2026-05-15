@@ -91,6 +91,22 @@ export function Sidebar({ profile, setShowPremiumModal }: SidebarProps) {
         </div>
       )}
 
+      <div className="sidebar-section pt-0 border-0">
+          <div className="sidebar-title">Next Best Action</div>
+          <div className="bg-forest/5 border border-forest/20 rounded-lg p-3 text-sm text-forest font-semibold">
+              🎯 {finance.getNextBestAction(profile)}
+          </div>
+      </div>
+
+      {(profile.history || []).length >= 2 && (
+          <div className="sidebar-section pt-0 border-0">
+              <div className="sidebar-title">Weekly Report</div>
+              <div className="bg-gray-50 border border-gray-100 rounded-lg p-3 text-xs text-gray-700 whitespace-pre-line leading-relaxed">
+                  {finance.generateWeeklyReport(profile)}
+              </div>
+          </div>
+      )}
+
       {(profile.insights || []).length > 0 && (
         <div className="sidebar-section pt-0 border-0">
           <div className="sidebar-title">AI Insights</div>
