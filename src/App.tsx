@@ -19,7 +19,7 @@ const PremiumModal = lazy(() => import('./components/PremiumModal').then(module 
 export default function App() {
   const { user, loginError, handleLogin } = useAuth();
   const { profile, setProfile, loadProfile, saveProfile } = useProfile(user);
-  const { chatHistory, setChatHistory, isTyping, input, setInput, handleSend } = useChat(profile, saveProfile);
+  const { chatHistory, setChatHistory, isTyping, input, setInput, handleSend } = useChat(profile, saveProfile, user);
 
   const [showProfile, setShowProfile] = useState(false);
   const [showDashboard, setShowDashboard] = useState(false);

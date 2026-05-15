@@ -45,6 +45,7 @@ export function useProfile(user: User | null) {
       if (snap.exists()) {
         const data = snap.data();
         let loadedProfile = data?.profile || {};
+
         
         let safeAssets = Array.isArray(loadedProfile.assets) ? loadedProfile.assets : [];
         if (!Array.isArray(loadedProfile.assets) && typeof loadedProfile.assets === 'object') {
@@ -128,6 +129,10 @@ export function useProfile(user: User | null) {
           finance.recalculateMetrics(safeProfile);
         }
         setProfile(safeProfile);
+      } else {
+        const dp = defaultProfile();
+        dp.lastUpdated = new Date().toISOString();
+        setProfile(dp);
       }
     } catch (e: any) {
       if (e?.message?.includes('client is offline')) {

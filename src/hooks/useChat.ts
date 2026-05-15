@@ -4,10 +4,12 @@ import { parser } from '../parser';
 import { insights } from '../insights';
 import { ONBOARDING_QUESTIONS } from '../constants';
 import { auth } from '../firebase';
+import { User } from 'firebase/auth';
 
 export function useChat(
   profile: UserProfile,
-  saveProfile: (p: UserProfile) => Promise<void>
+  saveProfile: (p: UserProfile) => Promise<void>,
+  user: User | null
 ) {
   const [chatHistory, setChatHistory] = useState<{ role: string; content: string; updates?: string[] }[]>([]);
   const [isTyping, setIsTyping] = useState(false);
@@ -16,16 +18,16 @@ export function useChat(
 
   // Add welcome message or start onboarding
   useEffect(() => {
-    if (auth.currentUser && chatHistory.length === 0 && profile.lastUpdated !== '') {
+    if (user && chatHistory.length === 0 && profile.lastUpdated !== '') {
       if (!profile.onboardingCompleted) {
         setOnboardingStep(1);
         setChatHistory([{ role: 'ai', content: ONBOARDING_QUESTIONS[0] }]);
       } else {
-        const welcomeMsg = `**Welcome back to PapaProfit, ${auth.currentUser.displayName?.split(' ')[0]}! 👋**\n\nI'm ready to help you manage your finances. Your current net worth is **₹${profile.metrics?.netWorth?.toLocaleString('en-IN') ?? '0'}**.\n\nWhat would you like to focus on today?`;
+        const welcomeMsg = `**Welcome back to PapaProfit, ${user.displayName?.split(' ')[0]}! 👋**\n\nI'm ready to help you manage your finances. Your current net worth is **₹${profile.metrics?.netWorth?.toLocaleString('en-IN') ?? '0'}**.\n\nWhat would you like to focus on today?`;
         setChatHistory([{ role: 'ai', content: welcomeMsg }]);
       }
     }
-  }, [profile.onboardingCompleted, profile.lastUpdated]); // Removed auth.currentUser as it's not reactive
+  }, [profile.onboardingCompleted, profile.lastUpdated, user, chatHistory.length]);
 
   const handleSend = useCallback(async (text?: string) => {
     const userMsg = (text ?? input).trim();

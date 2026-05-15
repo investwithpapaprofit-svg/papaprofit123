@@ -23,6 +23,9 @@ if (!groqKey) {
 console.log('Checking API key sources:');
 console.log('  GROQ_API_KEY:', process.env.GROQ_API_KEY ? '✅' : '❌');
 
+const MODEL = 'llama-3.3-70b-versatile';
+const FALLBACK_MODEL = 'llama3-8b-8192';
+
 const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY || ''
 });
@@ -225,7 +228,7 @@ async function startServer() {
   app.get('/api/test-groq', requireAuth, async (_, res) => {
     try {
       const completion = await groq.chat.completions.create({
-        model: 'llama-3.3-70b-versatile',
+        model: MODEL,
         messages: [{ role: 'user', content: 'Say hello' }]
       });
 
@@ -257,11 +260,13 @@ async function startServer() {
       const previousAssistantMsg = chatHistory.filter((m: any) => m.role === 'ai').at(-1)?.content;
 
       const completion = await groq.chat.completions.create({
-        model: 'llama-3.3-70b-versatile',
+        model: MODEL,
+        response_format: { type: 'json_object' },
         messages: [
           {
             role: 'system',
-            content: `You are a financial data extraction engine. Extract financial entities from the user message and return ONLY a valid JSON object with these fields: intent (string), confidenceScore (number 0-1), clarificationNeeded (boolean), clarificationMessage (string), extracted_data (object containing any of: personal, incomeSources, expenses, subscriptions, loans, assets, portfolio, goals). Use the assistant's previous message as context to interpret short replies like "80k" or "yes". No markdown, no explanation, just JSON.`
+            content: `You are a financial data extraction engine. Extract financial entities from the user message and return ONLY a valid JSON object with these fields: intent (string), confidenceScore (number 0-1), clarificationNeeded (boolean), clarificationMessage (string), extracted_data (object containing any of: personal, incomeSources, expenses, subscriptions, loans, assets, portfolio, goals). Use the assistant's previous message as context to interpret short replies like "80k" or "yes". No markdown, no explanation, just JSON.
+Example output format: {"intent":"general","confidenceScore":0.9,"clarificationNeeded":false,"clarificationMessage":"","extracted_data":{}}`
           },
           ...(previousAssistantMsg ? [{ role: 'assistant' as const, content: previousAssistantMsg }] : []),
           { role: 'user' as const, content: msg }
@@ -270,10 +275,9 @@ async function startServer() {
         temperature: 0.1
       });
       const rawText = completion.choices[0]?.message?.content || '{}';
-      const cleanText = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
       let data: any = {};
       try {
-        data = JSON.parse(cleanText);
+        data = JSON.parse(rawText);
       } catch {
         data = { intent: 'general', confidenceScore: 0.5, clarificationNeeded: false, extracted_data: {} };
       }
@@ -311,10 +315,10 @@ async function startServer() {
       const fhsScore = profile.metrics?.financialHealthScore || 0;
 
       let formattedMessages = chatHistory.slice(-6).map((h: any) => ({
-        role: h.role === 'user' ? 'user' : 'model',
-        parts: [{ text: h.content }]
+        role: h.role === 'user' ? 'user' : 'assistant',
+        content: h.content
       }));
-      if (formattedMessages.length > 0 && formattedMessages[0].role === 'model') {
+      if (formattedMessages.length > 0 && formattedMessages[0].role === 'assistant') {
         formattedMessages.shift();
       }
 
@@ -322,51 +326,53 @@ async function startServer() {
         ? `\nONBOARDING STATUS: The user is currently in a guided setup at step ${onboardingStep}. The current question being evaluated is: "${ONBOARDING_QUESTIONS[onboardingStep]}". DO NOT give a full financial plan yet. Prioritize: 1. expenses, 2. loans, 3. savings, 4. investments, 5. goals. If data is missing, casually ask for it step-by-step.`
         : "";
 
-      const systemCtx = `You are PapaProfit — a smart, modern financial copilot for Indian users.
+      const systemCtx = `You are PapaProfit AI — an elite AI financial strategist for Indian users.
 
-Your personality:
-* Talk like a real human, not a finance article.
-* Be conversational, short, warm, intelligent, and slightly playful.
-* Sound premium and confident.
-* NEVER sound robotic, corporate, or overly motivational.
-* NEVER flood the user with long paragraphs.
-* NEVER dump huge summaries unless explicitly asked.
-* NEVER give more than 3 short paragraphs at once.
-* Keep most replies under 80 words.
-* Ask only ONE important question at a time.
-* React naturally before asking the next thing.
+You behave like:
+- a personal CFO
+- a financial planner
+- a wealth advisor
+- a debt strategist
+- a budgeting coach
 
-VERY IMPORTANT:
-This is a chat app, not a report generator.
-BAD: Long essays, huge bullet lists, multiple sections like "Summary", "Insights", "Next Action", too much financial jargon, giving complete financial plans too early.
+Your job is to deeply understand the user's finances BEFORE giving advice.
 
-GOOD EXAMPLES:
-User: "I earn 1.4 lakh"
-Assistant: "Nice. What's your monthly spend roughly?"
-User: "Around 60k"
-Assistant: "That's actually strong. You're saving more than most people already. Any loans or EMIs?"
+Rules:
+- Ask follow-up questions when context is missing
+- Ask only 1–2 questions at a time
+- Be conversational and intelligent
+- Use short clean formatting
+- Explain concepts simply
+- Think step-by-step
+- Prioritize emergency funds first
+- Reduce high-interest debt aggressively
+- Give practical actionable advice
+- Detect risky spending patterns
+- Adapt to beginner vs advanced users
+- Never sound robotic
+- Never give generic motivational fluff
+- Never overwhelm users with jargon
+- Never hallucinate financial facts
 
-Conversation style rules:
-* Use short responses.
-* Use occasional emojis naturally, but not excessively.
-* Avoid repeating known information.
-* Do not explain obvious things.
-* Do not overpraise the user.
-* Do not mention percentages like "top 95% of India" unless specifically relevant.
-* Avoid giant calculations unless the user asks.
-* Be emotionally intelligent and curious.
+If information is missing:
+ASK QUESTIONS FIRST.
 
-Advice behavior:
-* Give actionable advice in 1-3 lines.
-* Prefer simple practical suggestions over theory.
-* Be direct and useful.
+If the user gives partial answers like:
+"80k"
+"yes"
+"monthly"
+"fixed"
+Use previous conversation context intelligently.
 
-Formatting rules:
-* No markdown headings.
-* No "Summary:" sections.
-* No giant bullet dumps.
-* No more than 3 bullets at once.
-* Prefer plain chat-style text.
+Your tone:
+- premium
+- calm
+- sharp
+- trustworthy
+- modern
+- intelligent
+
+You should feel like a ₹50,000/month financial advisor.
 ${onboardingCtx}
 
 CLIENT PROFILE:
@@ -393,13 +399,10 @@ CURRENT COPILOT ANALYSIS:
 - Recommended Action: ${finance.getNextBestAction(profile)}`;
 
       const completion = await groq.chat.completions.create({
-        model: 'llama-3.3-70b-versatile',
+        model: MODEL,
         messages: [
           { role: 'system', content: systemCtx },
-          ...formattedMessages.slice(-6).map((m: any) => ({
-            role: m.role === 'user' ? 'user' : 'assistant',
-            content: m.parts?.[0]?.text || m.content || ''
-          }))
+          ...formattedMessages
         ],
         max_tokens: 600,
         temperature: 0.7
