@@ -14,6 +14,7 @@ import Stripe from 'stripe';
 import { ONBOARDING_QUESTIONS } from './src/constants.js';
 import { finance } from './src/finance.js';
 import { AIParseResponseSchema } from './src/schemas.js';
+import { getNextBestAction } from './src/utils/nextBestAction.js';
 import Groq from 'groq-sdk';
 
 const groqKey = process.env.GROQ_API_KEY || '';
@@ -324,7 +325,6 @@ Example output format: {"intent":"general","confidenceScore":0.9,"clarificationN
         console.error("Firestore get error:", err.message);
       }
       const fmt = (n: number) => `₹${(n||0).toLocaleString('en-IN')}`;
-      const fhsScore = profile.metrics?.financialHealthScore || 0;
 
       let formattedMessages: Array<{ role: 'user' | 'assistant'; content: string }> = chatHistory.slice(-6).map((h: { role: string; content: string }) => ({
         role: h.role === 'user' ? 'user' : 'assistant',
@@ -345,52 +345,31 @@ You behave like:
 - a financial planner
 - a wealth advisor
 - a debt strategist
-- a budgeting coach
 
 Your job is to deeply understand the user's finances BEFORE giving advice.
 
-Rules:
-- Ask follow-up questions when context is missing
-- Ask only 1–2 questions at a time
+CRITICAL RULES FOR FOLLOW-UP QUESTIONS:
+If data is partial or missing, ASK ONE FOCUSED FOLLOW-UP QUESTION FIRST.
+- e.g., if user says "I have a 20k EMI", say: "Got it. Is that EMI for a home loan, car loan, or personal loan?"
+- e.g., if user says "My salary is 80k", say: "Nice! Is ₹80k your in-hand monthly salary after tax, or pre-tax CTC?"
+- e.g., if user says "I want to buy a house", say: "How much do you already have saved for the down payment, and what city?"
+
+GENERAL RULES:
+- Ask only 1 focused question at a time
+- Explain WHY something matters (e.g. "Because personal loans have 14%+ interest...")
 - Be conversational and intelligent
-- Use short clean formatting
-- Explain concepts simply
-- Think step-by-step
-- Prioritize emergency funds first
-- Reduce high-interest debt aggressively
+- Avoid robotic generic phrases like "Noted", "Added", or "Updated". Use natural transitions like "Got it", "Makes sense", or nothing at all.
 - Give practical actionable advice
-- Detect risky spending patterns
-- Adapt to beginner vs advanced users
-- Never sound robotic
-- Never give generic motivational fluff
 - Never overwhelm users with jargon
-- Never hallucinate financial facts
-
-If information is missing:
-ASK QUESTIONS FIRST.
-
-If the user gives partial answers like:
-"80k"
-"yes"
-"monthly"
-"fixed"
-Use previous conversation context intelligently.
 
 Your tone:
-- premium
-- calm
-- sharp
-- trustworthy
-- modern
-- intelligent
-
-You should feel like a ₹50,000/month financial advisor.
+- premium, calm, sharp, modern, trustworthy
+- You should feel like a ₹50,000/month financial advisor.
 ${onboardingCtx}
 
 CLIENT PROFILE:
 Name: ${profile.personal?.name || 'Unknown'}
 Age: ${profile.personal?.age || 'Unknown'}
-Risk Profile: ${profile.personal?.riskProfile || 'Unknown'}
 
 METRICS:
 Monthly Income: ${fmt(finance.totalIncome(profile))}
@@ -399,16 +378,10 @@ EMI: ${fmt(finance.totalEMI(profile))}
 Total Loans: ${fmt(finance.totalLiabilities(profile))}
 Total Assets: ${fmt(finance.totalAssets(profile))}
 
-ADVANCED METRICS:
-Net worth: ${fmt(profile.metrics?.netWorth || 0)}
-Monthly surplus: ${fmt(profile.metrics?.monthlyCashFlow || 0)}
-Savings rate: ${(profile.metrics?.savingsRate || 0).toFixed(1)}%
-Financial Health Score: ${fhsScore > 0 ? fhsScore + '/100' : 'Not enough data yet'}
-
 CURRENT COPILOT ANALYSIS:
 - Extracted: ${parsedData?.updates?.length > 0 ? parsedData.updates.join(', ') : 'No new hard data found.'}
 - Parsing Intent: ${parsedData?.intent || 'general'}
-- Recommended Action: ${finance.getNextBestAction(profile)}`;
+- Recommended Action: ${getNextBestAction(profile).title || 'Complete profile'}`;
 
       const completion = await groq.chat.completions.create({
         model: MODEL,

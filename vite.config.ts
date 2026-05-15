@@ -8,6 +8,15 @@ export default defineConfig(() => {
     plugins: [react(), tailwindcss()],
     build: {
       target: 'esnext',
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            vendor: ['react', 'react-dom'],
+            charts: ['recharts'],
+            firebase: ['firebase/app', 'firebase/auth', 'firebase/firestore']
+          }
+        }
+      }
     },
     resolve: {
       alias: {

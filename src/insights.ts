@@ -1,6 +1,8 @@
 import { UserProfile } from './types';
-import { finance } from './finance';
 import { auth } from './firebase';
+import { getNextBestAction } from './utils/nextBestAction';
+import { generateWeeklyReport } from './utils/weeklyReport';
+import { compareWithLast } from './utils/recentChanges';
 
 export const insights = {
   async generateResponse(userMsg: string, parsedData: any, profile: UserProfile, chatHistory: { role: string; content: string }[], onboardingStep?: number): Promise<string> {
@@ -30,19 +32,19 @@ export const insights = {
       let finalResponse = text;
       
       // Memory Engine & Report Injection (Deterministic)
-      const changes = finance.compareWithLast(profile);
-      let report = '';
+      const changes = compareWithLast(profile);
+      let report: any = null;
       
       if (profile.history && profile.history.length > 2 && (profile.history.length % 5 === 0 || userMsg.toLowerCase().includes('report'))) {
-         report = finance.generateWeeklyReport(profile);
+         report = generateWeeklyReport(profile);
       }
       
       const attachments = [];
       if (changes.length > 0) {
           attachments.push(`📈 **Trend Update**\n${changes.join('\n')}`);
       }
-      if (report && !report.includes('Not enough data')) {
-          attachments.push(report);
+      if (report && report.isAvailable) {
+          attachments.push(`Weekly Report:\nNet Worth Change: ${report.netWorthChange}`);
       }
       
       if (attachments.length > 0) {
@@ -51,8 +53,8 @@ export const insights = {
 
       if (parsedData?.intent === 'portfolio' || userMsg.toLowerCase().includes('report')) {
          const score = profile.metrics?.financialHealthScore || 0;
-         const advice = finance.getNextBestAction(profile);
-         finalResponse += `\n\n**Quick Pulse:** Score is ${score}/100. ${advice}`;
+         const advice = getNextBestAction(profile);
+         finalResponse += `\n\n**Quick Pulse:** Score is ${score}/100. ${advice.title}: ${advice.action}`;
       }
 
       return finalResponse;

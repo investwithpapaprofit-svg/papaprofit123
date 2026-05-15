@@ -4,6 +4,7 @@ import {
   PieChart, Pie, Cell, Legend
 } from 'recharts';
 import { useState } from 'react';
+import { generateDebtPlan } from '../utils/debtPlanner';
 
 interface DashboardProps {
   profile: UserProfile;
@@ -202,11 +203,13 @@ export function Dashboard({ profile }: DashboardProps) {
         </div>
       )}
 
-      {profile.loans && profile.loans.length > 0 && (
+      {profile.loans && profile.loans.length > 0 && (() => {
+        const debtPlan = generateDebtPlan(profile);
+        return (
           <div className="mt-4 border-t border-gray-100 pt-6">
              <h4 className="text-sm font-semibold text-gray-700 mb-4">Debt Payoff Planner</h4>
              <div className="space-y-3">
-             {profile.loans.slice().sort((a,b) => b.rate - a.rate).map((l, i) => (
+             {debtPlan.payoffPriority.map((l, i) => (
                  <div key={i} className="p-3 bg-red-50 rounded border border-red-100 flex items-center justify-between">
                      <div>
                          <div className="font-semibold text-red-900 text-sm">{l.name}</div>
@@ -219,10 +222,11 @@ export function Dashboard({ profile }: DashboardProps) {
              ))}
              </div>
              <div className="mt-3 text-xs text-gray-500 italic">
-                 * Avalanche strategy recommends paying extra towards the highest-interest debt first to save the most money over time.
+                 * {debtPlan.estimatedPayoffGuidance}
              </div>
           </div>
-      )}
+        );
+      })()}
 
     </div>
   );

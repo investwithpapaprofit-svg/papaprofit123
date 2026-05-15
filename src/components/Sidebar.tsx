@@ -1,5 +1,8 @@
 import { UserProfile } from '../types';
 import { finance } from '../finance';
+import { getNextBestAction } from '../utils/nextBestAction';
+import { getSmartAlerts } from '../utils/smartAlerts';
+import { generateWeeklyReport } from '../utils/weeklyReport';
 
 interface SidebarProps {
   profile: UserProfile;
@@ -13,6 +16,10 @@ export function Sidebar({ profile, setShowPremiumModal }: SidebarProps) {
   const surplus = profile.metrics.monthlyCashFlow;
   const sr = profile.metrics.savingsRate;
   const dr = profile.metrics.debtToIncomeRatio;
+
+  const nextAction = getNextBestAction(profile);
+  const smartAlerts = getSmartAlerts(profile);
+  const weeklyReport = generateWeeklyReport(profile);
 
   const fmt = (n: number) => {
     if (!n || isNaN(n)) return '₹0';
@@ -94,15 +101,34 @@ export function Sidebar({ profile, setShowPremiumModal }: SidebarProps) {
       <div className="sidebar-section pt-0 border-0">
           <div className="sidebar-title">Next Best Action</div>
           <div className="bg-forest/5 border border-forest/20 rounded-lg p-3 text-sm text-forest font-semibold">
-              🎯 {finance.getNextBestAction(profile)}
+              🎯 {nextAction.title}
+              <div className="text-xs text-forest/80 font-normal mt-1">{nextAction.action}</div>
           </div>
       </div>
 
-      {(profile.history || []).length >= 2 && (
+      {smartAlerts.length > 0 && (
+          <div className="sidebar-section pt-0 border-0">
+              <div className="sidebar-title">Smart Alerts</div>
+              <div className="flex flex-col gap-2">
+                 {smartAlerts.slice(0, 2).map((a, i) => (
+                    <div key={i} className={`rounded-lg p-3 text-sm border ${a.severity === 'high' ? 'bg-red-50 border-red-100 text-red-800' : 'bg-orange-50 border-orange-100 text-orange-800'}`}>
+                        <div className="font-semibold mb-1">⚠️ {a.explanation}</div>
+                        <div className="text-xs opacity-90">{a.action}</div>
+                    </div>
+                 ))}
+              </div>
+          </div>
+      )}
+
+      {weeklyReport.isAvailable && (
           <div className="sidebar-section pt-0 border-0">
               <div className="sidebar-title">Weekly Report</div>
               <div className="bg-gray-50 border border-gray-100 rounded-lg p-3 text-xs text-gray-700 whitespace-pre-line leading-relaxed">
-                  {finance.generateWeeklyReport(profile)}
+                  <div className="font-semibold mb-1 border-b pb-1">Week over Week</div>
+                  <div className="flex justify-between"><span>Net Worth:</span> <span className="font-medium">{weeklyReport.netWorthChange}</span></div>
+                  <div className="flex justify-between"><span>Savings Rate:</span> <span className="font-medium">{weeklyReport.savingsRateChange}</span></div>
+                  <div className="flex justify-between"><span>Debt Change:</span> <span className="font-medium">{weeklyReport.debtChange}</span></div>
+                  <div className="mt-2 text-forest font-medium">{weeklyReport.topImprovement}</div>
               </div>
           </div>
       )}
