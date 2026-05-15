@@ -149,7 +149,7 @@ export function useProfile(user: User | null) {
     finance.recalculateMetrics(profileToSave);
     try {
       await setDoc(doc(db, 'users', user.uid), { profile: profileToSave }, { merge: true });
-      setProfile(profileToSave);
+      setProfile({ ...profileToSave, isPremium, role } as any);
     } catch (e: any) {
       if (e?.message?.includes('client is offline')) {
          console.warn("Firestore client is offline, unable to save profile");

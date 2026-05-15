@@ -13,6 +13,7 @@ import { z } from 'zod';
 import Stripe from 'stripe';
 import { ONBOARDING_QUESTIONS } from './src/constants.js';
 import { finance } from './src/finance.js';
+import { AIParseResponseSchema } from './src/schemas.js';
 import Groq from 'groq-sdk';
 
 const groqKey = process.env.GROQ_API_KEY || '';
@@ -279,9 +280,17 @@ Example output format: {"intent":"general","confidenceScore":0.9,"clarificationN
       const rawText = completion.choices[0]?.message?.content || '{}';
       let data: any = {};
       try {
-        data = JSON.parse(rawText);
-      } catch {
-        data = { intent: 'general', confidenceScore: 0.5, clarificationNeeded: false, extracted_data: {} };
+        const parsedJson = JSON.parse(rawText);
+        data = AIParseResponseSchema.parse(parsedJson);
+      } catch (parseError) {
+        console.warn('AI Parsing failed schema validation:', parseError);
+        data = {
+          intent: 'general',
+          confidenceScore: 0,
+          clarificationNeeded: true,
+          clarificationMessage: 'I could not confidently understand that. Can you rephrase with the amount and category?',
+          extracted_data: {}
+        };
       }
       res.json(data);
     } catch (error: any) {
