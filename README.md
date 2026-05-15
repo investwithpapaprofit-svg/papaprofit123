@@ -12,9 +12,16 @@ View your app in AI Studio: https://ai.studio/apps/ddd477d6-76dc-4260-a7e0-eed58
 
 **Prerequisites:**  Node.js
 
-
 1. Install dependencies:
    `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+2. Set the `GROQ_API_KEY` in `.env.local` to your Groq API key, and configure Firebase Vite env vars.
 3. Run the app:
    `npm run dev`
+
+## Notes
+- **Google Login**: Ensure you add your app's domain to Firebase Authorized Domains in the Firebase Console so Google popup login works.
+- **Firestore Rules**: Deploy the rules in `firestore.rules` to your Firebase project.
+
+## Scripts
+- **Test**: `npm run test`
+- **Build**: `npm run build`

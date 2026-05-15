@@ -21,7 +21,9 @@ export const insights = {
           const errData = await response.json();
           if (errData.error) errText = errData.error;
         } catch(ex) {}
-        throw new Error(errText);
+        const errorObj = new Error(errText) as any;
+        errorObj.status = response.status;
+        throw errorObj;
       }
       const data = await response.json();
       const text = data.text || 'Sorry, I had trouble generating a response.';
@@ -56,24 +58,7 @@ export const insights = {
       return finalResponse;
     } catch (e: any) {
       console.error('AI Insights error:', e);
-
-      if (
-        e.message?.includes('API key') ||
-        e.message?.includes('API_KEY_INVALID') ||
-        e.message?.includes('INVALID_ARGUMENT') ||
-        e.message?.includes('Gemini API key is invalid')
-      ) {
-        return 'Gemini API key is invalid.';
-      }
-
-      if (
-        e.message?.includes('offline') ||
-        e.message?.includes('network')
-      ) {
-        return 'You appear to be offline.';
-      }
-
-      return 'Sorry, the AI is temporarily unavailable. Please try again.';
+      throw e;
     }
   }
 };

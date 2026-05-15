@@ -47,6 +47,8 @@ service cloud.firestore {
           isOwner(userId) &&
           isSafeProfileWrite()
         ) || isAdmin();
+
+      allow delete: if isOwner(userId) || isAdmin();
     }
   }
 }

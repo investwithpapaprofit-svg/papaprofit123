@@ -95,7 +95,7 @@ export function Sidebar({ profile, setShowPremiumModal }: SidebarProps) {
         <div className="sidebar-section pt-0 border-0">
           <div className="sidebar-title">AI Insights</div>
           <div>
-            {(profile.insights || []).map((n, i) => <div key={i} className="nudge"><span className="nudge-icon font-emoji">💡</span> <span dangerouslySetInnerHTML={{ __html: n.title }} /></div>)}
+            {(profile.insights || []).map((n, i) => <div key={i} className="nudge"><span className="nudge-icon font-emoji">💡</span> <span>{n.title}</span></div>)}
           </div>
         </div>
       )}

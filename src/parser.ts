@@ -28,7 +28,9 @@ export const parser = {
           const errData = await response.json();
           if (errData.error) errText = errData.error;
         } catch(e) {}
-        throw new Error(errText);
+        const errorObj = new Error(errText) as any;
+        errorObj.status = response.status;
+        throw errorObj;
       }
       const data = await response.json();
       
@@ -152,9 +154,9 @@ export const parser = {
           });
       }
 
-    } catch (e) {
+    } catch (e: any) {
       console.error("Server parsing failed", e);
-      intent = 'general';
+      throw e;
     }
 
     finance.recalculateMetrics(newProfile);

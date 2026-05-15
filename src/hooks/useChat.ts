@@ -3,7 +3,6 @@ import { UserProfile } from '../types';
 import { parser } from '../parser';
 import { insights } from '../insights';
 import { ONBOARDING_QUESTIONS } from '../constants';
-import { auth } from '../firebase';
 import { User } from 'firebase/auth';
 
 export function useChat(
@@ -77,9 +76,17 @@ export function useChat(
       setChatHistory(h => [...h, { role: 'ai', content: reply, updates: parsed.updates }]);
     } catch (error: any) {
       console.error('Handle send error:', error);
-      let errMsg = "I'm having a bit of trouble connecting to my brain right now.";
-      if (error.message && error.message.includes('API key not valid')) {
-         errMsg = "⚠️ **Configuration Error**: Your Gemini API key is invalid or not provided. Please go to AI Studio Settings -> API Keys, and enter a valid Gemini API key to use PapaProfit.";
+      let errMsg = "I'm having a bit of trouble connecting right now.";
+      const errStr = [error?.message, error?.error, error?.response?.status].join(' ');
+      
+      if (errStr.includes('Groq API key not configured')) {
+         errMsg = "⚠️ **Configuration Error**: AI is not configured. Add GROQ_API_KEY to .env.local and restart the server.";
+      } else if (errStr.includes('401') || errStr.includes('Unauthorized')) {
+         errMsg = "⚠️ **Session Expired**: Please sign in again to continue.";
+      } else if (errStr.includes('429') || errStr.includes('Too many requests')) {
+         errMsg = "⏳ **Rate Limited**: Too many requests. Please wait a few minutes.";
+      } else if (!navigator.onLine || errStr.includes('Failed to fetch') || errStr.includes('NetworkError')) {
+         errMsg = "📶 **Network Error**: You appear to be offline. Check your internet connection.";
       } else if (error.message) {
          errMsg = "Error: " + error.message;
       }

@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+dotenv.config({ path: '.env.local' });
 dotenv.config();
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
@@ -6,7 +7,6 @@ import path from 'path';
 import yahooFinance from 'yahoo-finance2';
 import admin from 'firebase-admin';
 import { getFirestore } from 'firebase-admin/firestore';
-import fs from 'fs';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
@@ -24,7 +24,6 @@ console.log('Checking API key sources:');
 console.log('  GROQ_API_KEY:', process.env.GROQ_API_KEY ? '✅' : '❌');
 
 const MODEL = 'llama-3.3-70b-versatile';
-const FALLBACK_MODEL = 'llama3-8b-8192';
 
 const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY || ''
@@ -79,6 +78,7 @@ async function startServer() {
 
   // Security Middlewares
   app.use(helmet({
+    crossOriginOpenerPolicy: false,
     crossOriginEmbedderPolicy: false,
     xFrameOptions: false,
     contentSecurityPolicy: {
@@ -90,6 +90,8 @@ async function startServer() {
         styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
         imgSrc: ["'self'", "data:", "blob:", "https://*.google.com", "https://*.googleusercontent.com"],
         fontSrc: ["'self'", "https://fonts.gstatic.com"],
+        connectSrc: ["'self'", "https://*.googleapis.com", "https://*.firebaseio.com", "wss://*.firebaseio.com"],
+        frameSrc: ["'self'", "https://*.firebaseapp.com", "https://accounts.google.com"],
         frameAncestors: ["'self'", "https://*.run.app", "https://*.google.com", "https://*.aistudio.google.com"],
       }
     }
@@ -257,7 +259,7 @@ async function startServer() {
     }
     try {
       const { msg, chatHistory = [] } = parseSchema.parse(req.body);
-      const previousAssistantMsg = chatHistory.filter((m: any) => m.role === 'ai').at(-1)?.content;
+      const previousAssistantMsg = chatHistory.filter((m: { role: string; content: string }) => m.role === 'ai').at(-1)?.content;
 
       const completion = await groq.chat.completions.create({
         model: MODEL,
@@ -314,7 +316,7 @@ Example output format: {"intent":"general","confidenceScore":0.9,"clarificationN
       const fmt = (n: number) => `₹${(n||0).toLocaleString('en-IN')}`;
       const fhsScore = profile.metrics?.financialHealthScore || 0;
 
-      let formattedMessages = chatHistory.slice(-6).map((h: any) => ({
+      let formattedMessages: Array<{ role: 'user' | 'assistant'; content: string }> = chatHistory.slice(-6).map((h: { role: string; content: string }) => ({
         role: h.role === 'user' ? 'user' : 'assistant',
         content: h.content
       }));
