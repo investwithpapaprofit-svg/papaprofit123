@@ -10,6 +10,7 @@ import { useChat } from './hooks/useChat';
 import { LoginScreen } from './components/LoginScreen';
 import { ChatWindow } from './components/ChatWindow';
 import { ChatInput } from './components/ChatInput';
+import { ConfirmationModal } from './components/ConfirmationModal';
 
 import { FinancialSourceEditor } from './components/FinancialSourceEditor';
 const Dashboard = lazy(() => import('./components/Dashboard').then(module => ({ default: module.Dashboard })));
@@ -28,6 +29,8 @@ export default function App() {
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -198,7 +201,7 @@ export default function App() {
         </Suspense>
 
         {/* MAIN AREA */}
-        <div className="main-area flex-1 flex flex-col h-[calc(100dvh-62px)] relative">
+        <div className="main-area flex-1 flex flex-col h-full relative">
           
           {showDashboard ? (
             <div className="flex-1 overflow-y-auto p-4 md:p-8 bg-[#f4f6f4]">
@@ -410,8 +413,23 @@ export default function App() {
             <div className="profile-section mt-6 pt-4 border-t border-gray-100">
               <h4 className="text-red-600">Account Settings</h4>
               <button 
-                onClick={async () => {
-                  if (confirm("Are you sure you want to permanently delete your account and all financial data? This action cannot be undone.")) {
+                onClick={() => setDeleteModalOpen(true)}
+                className="w-full text-center py-2 text-sm text-red-600 font-semibold border border-red-200 bg-red-50 rounded-lg hover:bg-red-100 transition"
+              >
+                Delete Account & Data
+              </button>
+            </div>
+            {/* Confirmation Modal */}
+            <ConfirmationModal
+                isOpen={deleteModalOpen}
+                title="Delete Account"
+                message="Are you sure you want to permanently delete your account and all financial data? This action cannot be undone."
+                confirmText="Delete Permanently"
+                isDangerous={true}
+                isLoading={isDeleting}
+                onCancel={() => setDeleteModalOpen(false)}
+                onConfirm={async () => {
+                    setIsDeleting(true);
                     try {
                       if (user) {
                         const { deleteUser } = await import('firebase/auth');
@@ -423,14 +441,12 @@ export default function App() {
                     } catch(err) {
                       console.error(err);
                       showToast("Please log out and log back in to delete your account.");
+                    } finally {
+                      setIsDeleting(false);
+                      setDeleteModalOpen(false);
                     }
-                  }
                 }}
-                className="w-full text-center py-2 text-sm text-red-600 font-semibold border border-red-200 bg-red-50 rounded-lg hover:bg-red-100 transition"
-              >
-                Delete Account & Data
-              </button>
-            </div>
+            />
           </div>
         </div>
         </>

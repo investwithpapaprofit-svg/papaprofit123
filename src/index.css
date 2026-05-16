@@ -30,7 +30,7 @@ body {
 }
 
 #appShell {
-  @apply flex flex-col h-screen overflow-hidden;
+  @apply flex flex-col h-[100dvh] overflow-hidden;
 }
 
 .topbar {

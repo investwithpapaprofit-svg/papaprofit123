@@ -102,6 +102,8 @@ export interface UserProfile {
   preferences: UserPreferences;
   history: HistoricalEvent[];
   isPremium?: boolean;
+  role?: string;
+  adminFields?: any;
   onboardingCompleted?: boolean;
   lastUpdated: string | null;
 }

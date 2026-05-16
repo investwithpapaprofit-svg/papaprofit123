@@ -5,6 +5,7 @@ import { db, handleFirestoreError, OperationType } from '../firebase';
 import { UserProfile } from '../types';
 import { finance } from '../finance';
 import { auth } from '../firebase';
+import { sanitizeProfileForWrite } from '../utils/sanitizeProfileForWrite';
 
 export const DEFAULT_PROFILE: UserProfile = {
   personal: {},
@@ -145,11 +146,11 @@ export function useProfile(user: User | null) {
 
   const saveProfile = useCallback(async (newProfile: UserProfile) => {
     if (!user) return;
-    const { isPremium, role, ...profileToSave } = newProfile as any;
+    const profileToSave = sanitizeProfileForWrite(newProfile, profile) as UserProfile;
     finance.recalculateMetrics(profileToSave);
     try {
       await setDoc(doc(db, 'users', user.uid), { profile: profileToSave }, { merge: true });
-      setProfile({ ...profileToSave, isPremium, role } as any);
+      setProfile({ ...profileToSave, isPremium: profile.isPremium, role: profile.role } as any);
     } catch (e: any) {
       if (e?.message?.includes('client is offline')) {
          console.warn("Firestore client is offline, unable to save profile");
@@ -157,7 +158,7 @@ export function useProfile(user: User | null) {
          handleFirestoreError(e, OperationType.WRITE, `users/${user.uid}`);
       }
     }
-  }, [user]);
+  }, [user, profile]);
 
   return { profile, setProfile, loadProfile, saveProfile };
 }

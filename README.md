@@ -2,38 +2,57 @@
 <img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
 </div>
 
-# PapaProfit AI Finance App
+# PapaProfit – AI Financial Copilot
 
-A production-grade, AI-powered personal finance application built for Indian users, designed to provide comprehensive financial insights, track net worth, manage debts, and offer AI copilot assistance.
-Built with React, Vite, Express, Firebase, and Groq.
+A premium, AI-powered personal finance dashboard designed for Indian users. PapaProfit merges deterministic financial reasoning (savings rates, EMI burden calculations, debt payoffs) with a conversational AI copilot to act as a personal wealth advisor.
 
-## Features
+This project has been upgraded to a **production-grade prototype**.
 
-- **Authentication:** Google OAuth via Firebase with secure cross-origin helmet configurations.
-- **AI Copilot:** Conversational AI powered by Groq LLaMA models, allowing users to naturally chat to update their portfolio and ask for financial advice.
-- **Dashboard & Reporting:** Clean visual metrics, Financial Health Score, goals progress, and asset allocation pie charts. Exporter for PDF reports.
-- **Smart Planners:** Debt Payoff Planner, Goal Simulators, and automated AI insights.
-- **Secure Data Storage:** User data is saved in Cloud Firestore, protected with strict row-level security rules.
+## Current Features
+
+- **Authentication:** Google OAuth via Firebase with secure cross-origin handling.
+- **Deterministic Financial Engine:**
+  - **Financial Health Score (FHS):** Hard-coded, accurate 0-100 scoring based on savings rate, debt-to-income, emergency fund runway, and investment size.
+  - **Debt Payoff Planner:** Snowball/Avalanche strategies based on your actual loan data.
+  - **Goal Simulator:** Monthly SIP recommendations, inflation-adjusted, and goal affordability checks.
+  - **Subscription Leak Detector:** Identifies potential wasteful recurring subscriptions.
+  - **Emergency Fund Planner:** Specific actionable runway planning.
+  - **SIP Growth Simulator:** Compound interest wealth visualizer.
+- **AI Copilot (Groq / LLaMA 3):**
+  - Directed to act as a premium Indian financial advisor (₹50k/month tier) rather than a generic chatbot. 
+  - Capable of parsing conversational inputs and automatically updating the user's dashboard (e.g. "I got a new car loan for 5L at 8% EMI 12k").
+  - Asks strategic follow-up questions when critical info is missing.
+- **Premium Model Protection:** The profile data sanitizes `isPremium` and `role` to prevent client-side spoofing to the database.
+- **Exporting:** PDF reports of the dashboard.
+
+## Known Limitations & Production Caveats
+
+- **Mocked Stripe Integration:** The "Papa Premium" Stripe flow is a UI mock. The application does not currently process real payments or handle webhooks.
+- **Firebase Transitive Audit Warnings:** `npm audit` will show 8 low-severity warnings originating from `@google-cloud/firestore` dependencies (e.g. `teeny-request`, `@tootallnate/once`). These are deep transitive dependencies of `firebase-admin` and are safe to ignore for this deployment, but they exist.
+- **AI Limitations:** While the AI is instructed to sound premium, it is not a certified financial planner. Calculations inside chat may occasionally hallucinate; rely on the Dashboard tools for deterministic calculations.
+- **Desktop/Mobile:** Mobile polish has been applied (touch targets, fixed 100dvh for iOS, responsive stacked grids), but complex charts and dense data are still easiest to consume on Desktop.
 
 ## Getting Started
 
 ### Prerequisites
 - Node.js (v18+)
-- Firebase Project (with Authentication and Firestore enabled)
+- Firebase Project (Authentication & Firestore enabled)
 - Groq API Key
 
-### Installation
+### Installation & Set Up
 
-1. **Clone the repository and install dependencies:**
+1. **Clone & Install:**
    ```bash
    npm install
    ```
+   *(Note: Run `npm audit --omit=dev` to verify dependency safety, keeping the documented Firebase warnings in mind.)*
 
-2. **Environment Configuration:**
-   Copy `.env.example` to `.env.local` and add your keys:
+2. **Environment Variables:**
+   Copy `.env.example` to `.env.local` and add real keys.
    ```env
    GROQ_API_KEY=your_groq_llama_key_here
 
+   # Firebase Client Config
    VITE_FIREBASE_API_KEY=your_firebase_api_key
    VITE_FIREBASE_AUTH_DOMAIN=your_firebase_auth_domain
    VITE_FIREBASE_PROJECT_ID=your_firebase_project_id
@@ -43,41 +62,20 @@ Built with React, Vite, Express, Firebase, and Groq.
    ```
 
 3. **Firebase Setup:**
-   Ensure you add `localhost:3000` (or your domain) to the Authorized Domains in the Firebase Console so Google popup login works.
+   - In the Firebase Console, go to **Authentication > Settings > Authorized domains** and add your hosted URLs (e.g. `localhost` or your vercel/cloud-run domain) to enable Google pop-up login.
+   - Deploy `firestore.rules`. The database is locked down so users can only read/write their own document in the `users` collection.
 
-4. **Firestore Rules:**
-   Deploy the `firestore.rules` provided in this repository to secure user data. They strictly limit access to correct UID owners.
+4. **Run Server:**
+   ```bash
+   npm run dev
+   ```
+   The application runs on `0.0.0.0:3000`. The Vite frontend is served through Express (`server.ts`).
 
-### Running the App
+## Testing
 
-```bash
-# Start the full-stack development server
-npm run dev
-```
-
-The application will bind to `0.0.0.0:3000`. 
-API requests to `/api/*` are handled by Express, while all other routes fallback to the Vite SPA.
-
-## Project Structure
-
-- `server.ts`: Express backend handling AI inference and secure endpoints.
-- `src/App.tsx`: Main React component and routing.
-- `src/finance.ts`: Core deterministic logic engine for financial metrics.
-- `src/parser.ts`: AI intention parser mapping AI responses to UI state changes.
-- `src/components/`: Reusable, heavily styled Tailwind UI components.
-
-## Testing & Build
+This project prioritizes testing the *actual* business logic utilities.
 
 ```bash
-# Run unit tests
 npm run test
-
-# Type-check, lint, and build for production
-npm run build
 ```
-
-## Known Limitations & Future Work
-
-- **Payments:** The Stripe Pro tier is mocked. Real subscription billing should be wired up by handling stripe webhooks in `server.ts`.
-- **Mobile Responsiveness:** The UI is currently optimized for desktop views.
-- **Multiple Currencies:** App is heavily biased toward INR by default. It can be extended via preferences.
+*(Tests cover: FHS breakdown, Goal Simulator, API Error Mappers, Profile Sanitization, Debt Planners, Validation schemas).*

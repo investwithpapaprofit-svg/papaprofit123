@@ -3,6 +3,7 @@ import { auth } from './firebase';
 import { getNextBestAction } from './utils/nextBestAction';
 import { generateWeeklyReport } from './utils/weeklyReport';
 import { compareWithLast } from './utils/recentChanges';
+import { calculateFHSBreakdown } from './utils/fhsBreakdown';
 
 export const insights = {
   async generateResponse(userMsg: string, parsedData: any, profile: UserProfile, chatHistory: { role: string; content: string }[], onboardingStep?: number): Promise<string> {
@@ -41,7 +42,7 @@ export const insights = {
       
       const attachments = [];
       if (changes.length > 0) {
-          attachments.push(`📈 **Trend Update**\n${changes.join('\n')}`);
+          attachments.push(`📈 **Habits & Streaks**\n${changes.join('\n')}`);
       }
       if (report && report.isAvailable) {
           attachments.push(`Weekly Report:\nNet Worth Change: ${report.netWorthChange}`);
@@ -51,10 +52,16 @@ export const insights = {
           finalResponse += '\n\n---\n\n' + attachments.join('\n\n');
       }
 
-      if (parsedData?.intent === 'portfolio' || userMsg.toLowerCase().includes('report')) {
+      if (parsedData?.intent === 'portfolio' || userMsg.toLowerCase().includes('report') || userMsg.toLowerCase().includes('score')) {
          const score = profile.metrics?.financialHealthScore || 0;
          const advice = getNextBestAction(profile);
+         const breakdown = calculateFHSBreakdown(profile);
+         const nextThing = breakdown.fastestActions[0];
+         
          finalResponse += `\n\n**Quick Pulse:** Score is ${score}/100. ${advice.title}: ${advice.action}`;
+         if (nextThing) {
+            finalResponse += `\n*Highest ROI action right now*: ${nextThing}`;
+         }
       }
 
       return finalResponse;

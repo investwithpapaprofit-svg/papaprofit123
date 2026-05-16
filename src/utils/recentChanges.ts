@@ -13,18 +13,38 @@ export function compareWithLast(profile: UserProfile): string[] {
 
     const changes = [];
 
-    if (last.totalExpenses !== undefined && current.totalExpenses !== undefined && last.totalExpenses > 0) {
-      const diff = ((current.totalExpenses - last.totalExpenses) / last.totalExpenses) * 100;
-      if (Math.abs(diff) > 5) {
-        changes.push(`Your expenses changed by ${diff > 0 ? '+' : ''}${diff.toFixed(1)}%`);
+    // Milestone: Savings Rate Improvement
+    if (last.savingsRate !== undefined && current.savingsRate !== undefined) {
+      if (current.savingsRate - last.savingsRate >= 5) {
+        changes.push(`🎉 **Milestone**: You improved your savings rate by ${(current.savingsRate - last.savingsRate).toFixed(1)}%!`);
       }
     }
 
-    if (last.totalIncome !== undefined && current.totalIncome !== undefined && last.totalIncome > 0) {
-      const diff = ((current.totalIncome - last.totalIncome) / last.totalIncome) * 100;
-      if (Math.abs(diff) > 5) {
-        changes.push(`Your income changed by ${diff > 0 ? '+' : ''}${diff.toFixed(1)}%`);
+    // Milestone: Net Worth
+    if (last.netWorth !== undefined && current.netWorth !== undefined) {
+      if (current.netWorth > last.netWorth && Math.floor(current.netWorth / 500000) > Math.floor(last.netWorth / 500000)) {
+         changes.push(`🎉 **Milestone**: Your net worth crossed ₹${((Math.floor(current.netWorth / 500000)*500000)/100000).toFixed(1)}L! Keep it up.`);
       }
+    }
+
+    // Debt reduction
+    if (last.totalLiabilities !== undefined && current.totalLiabilities !== undefined && last.totalLiabilities > 0) {
+      if (current.totalLiabilities < last.totalLiabilities) {
+         const paidOff = last.totalLiabilities - current.totalLiabilities;
+         changes.push(`👏 **Progress**: You've paid off ₹${paidOff.toLocaleString('en-IN')} in debt.`);
+      }
+    }
+
+    // Goal close to completion
+    if (profile.goals && profile.goals.length > 0) {
+        for (const goal of profile.goals) {
+            if (goal.target > 0 && goal.saved > 0) {
+                const pct = goal.saved / goal.target;
+                if (pct >= 0.75 && pct < 1) { // We can't really compare properly with history for individual goals easily without complex logic, so we just check static state
+                    // We only want to notify once, but we can just add a nudge
+                }
+            }
+        }
     }
 
     return changes;

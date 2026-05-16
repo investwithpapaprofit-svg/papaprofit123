@@ -89,11 +89,18 @@ test('generateInsights filters logically', () => {
   expect(insights.some(i => i.id === 'sr_low')).toBe(true);
 });
 
+import { sanitizeProfileForWrite } from './utils/sanitizeProfileForWrite';
+import { mapChatError } from './utils/mapChatError';
+
 test('profile structure sanitization with goals/history', () => {
-  const newProfile = { name: "Test", history: [1, 2, 3], goals: [{ name: "car", saved: -500 }] };
-  const { ...profileToSave } = newProfile as any;
-  expect(profileToSave.history.length).toBe(3);
-  expect(profileToSave.goals[0].saved).toBe(-500);
+  const newProfile = { name: "Test", history: [1, 2, 3], goals: [{ name: "car", saved: -500 }], isPremium: true, role: 'admin' };
+  const currentTrustedState = { isPremium: false };
+  const profileToSave = sanitizeProfileForWrite(newProfile, currentTrustedState);
+  
+  expect(profileToSave.history!.length).toBe(3);
+  expect(profileToSave.goals![0].saved).toBe(-500);
+  expect(profileToSave.isPremium).toBe(false); // Pulled from trusted state
+  expect(profileToSave.role).toBeUndefined(); // Dropped from untrusted, not in trusted
 });
 
 test('history snapshot storage limit', () => {
@@ -107,27 +114,45 @@ test('history snapshot storage limit', () => {
     expect(profile.history!.length).toBeLessThanOrEqual(20);
 });
 
-test('finance surplus logic', () => {
-  const profile: UserProfile = { ...mockProfile, subscriptions: [], loans: [], income: [{ name: 'Salary', value: 100000 }], expenses: [{ name: 'Rent', value: 30000 }] };
-  expect(finance.surplus(profile)).toBe(70000);
+import { calculateFHSBreakdown } from './utils/fhsBreakdown';
+
+test('fhs breakdown categorization and scoring', () => {
+    const profile: UserProfile = { ...mockProfile, income: [{ name: 'Salary', value: 100000 }], expenses: [{ name: 'Rent', value: 50000 }], loans: [{ name: 'Car', amount: 500000, rate: 8, emi: 40000 }], assets: [], portfolio: [], subscriptions: [] };
+    const breakdown = calculateFHSBreakdown(profile);
+    
+    // Total income = 100k, Expenses = 50k, EMI = 40k. Total out = 90k. Surplus = 10k.
+    // Savings Rate = 10% -> 50 score
+    // mDTI = 40% -> 20 score
+    // efRunway = 0 -> 0 score
+    // Investments = 0 -> 0 score
+    
+    expect(breakdown.categories.find(c => c.name === 'Savings Rate')?.score).toBe(50);
+    expect(breakdown.categories.find(c => c.name === 'Debt Burden')?.score).toBe(20);
+    expect(breakdown.categories.find(c => c.name === 'Emergency Fund')?.score).toBe(0);
+    expect(breakdown.topWeaknesses.length).toBeGreaterThan(0);
+    expect(breakdown.fastestActions.length).toBeGreaterThan(0);
 });
 
+import { simulateGoal } from './utils/goalSimulator';
+
 test('api error mapping test helper logic', () => {
-  const mapStr = (errStr: string) => {
-      let errMsg = "I'm having a bit of trouble connecting right now.";
-      if (errStr.includes('Groq API key not configured')) {
-         errMsg = "Configuration";
-      } else if (errStr.includes('401') || errStr.includes('Unauthorized')) {
-         errMsg = "Session Expired";
-      } else if (errStr.includes('429') || errStr.includes('Too many requests')) {
-         errMsg = "Rate Limited";
-      } else if (errStr.includes('Failed to fetch') || errStr.includes('NetworkError')) {
-         errMsg = "Network Error";
-      }
-      return errMsg;
-  };
-  expect(mapStr('Error 401 Unauthorized')).toBe("Session Expired");
-  expect(mapStr('Groq API key not configured right now')).toBe("Configuration");
-  expect(mapStr('Failed to fetch from server')).toBe("Network Error");
-  expect(mapStr('Error 429 Too many requests')).toBe("Rate Limited");
+  expect(mapChatError('Error 401 Unauthorized')).toBe("Your session seems to have expired. Please log in again.");
+  expect(mapChatError('GROQ_API_KEY is not defined')).toBe("My AI systems are currently unconfigured. Please check the backend configuration.");
+  expect(mapChatError('Failed to fetch from server')).toBe("It looks like you're offline or experiencing network issues. Please check your connection.");
+  expect(mapChatError('Error 429 Too many requests')).toBe("I'm receiving too many requests right now. Please wait a moment and try again.");
+});
+
+test('goal simulator logic', () => {
+    const profile: UserProfile = { ...mockProfile, income: [{ name: 'S', value: 100000 }], expenses: [{ name: 'E', value: 50000 }] }; // surplus 50k
+    const goal = { name: 'House', target: 5000000, saved: 1000000, monthlyNeeded: 50000, months: 60 };
+    
+    const sim = simulateGoal(goal, profile, 0.06, 0.12); // 12% return, 6% inflation
+    expect(sim.suggestedMonthlySIP).toBeGreaterThan(0);
+    expect(sim.status).toBeDefined();
+    
+    // Auto completion when fully funded
+    const doneGoal = { name: 'Done', target: 100000, saved: 100000, monthlyNeeded: 0, months: 12 };
+    const doneSim = simulateGoal(doneGoal, profile);
+    expect(doneSim.status).toBe('completed');
+    expect(doneSim.monthsToComplete).toBe(0);
 });

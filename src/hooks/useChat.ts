@@ -4,6 +4,7 @@ import { parser } from '../parser';
 import { insights } from '../insights';
 import { ONBOARDING_QUESTIONS } from '../constants';
 import { User } from 'firebase/auth';
+import { mapChatError } from '../utils/mapChatError';
 
 export function useChat(
   profile: UserProfile,
@@ -76,20 +77,7 @@ export function useChat(
       setChatHistory(h => [...h, { role: 'ai', content: reply, updates: parsed.updates }]);
     } catch (error: any) {
       console.error('Handle send error:', error);
-      let errMsg = "I'm having a bit of trouble connecting right now.";
-      const errStr = [error?.message, error?.error, error?.response?.status].join(' ');
-      
-      if (errStr.includes('Groq API key not configured')) {
-         errMsg = "⚠️ **Configuration Error**: AI is not configured. Add GROQ_API_KEY to .env.local and restart the server.";
-      } else if (errStr.includes('401') || errStr.includes('Unauthorized')) {
-         errMsg = "⚠️ **Session Expired**: Please sign in again to continue.";
-      } else if (errStr.includes('429') || errStr.includes('Too many requests')) {
-         errMsg = "⏳ **Rate Limited**: Too many requests. Please wait a few minutes.";
-      } else if (!navigator.onLine || errStr.includes('Failed to fetch') || errStr.includes('NetworkError')) {
-         errMsg = "📶 **Network Error**: You appear to be offline. Check your internet connection.";
-      } else if (error.message) {
-         errMsg = "Error: " + error.message;
-      }
+      const errMsg = mapChatError(error);
       setChatHistory(prev => [...prev, { role: 'ai', content: errMsg }]);
     } finally {
       setIsTyping(false);

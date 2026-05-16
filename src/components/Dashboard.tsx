@@ -5,6 +5,12 @@ import {
 } from 'recharts';
 import { useState } from 'react';
 import { generateDebtPlan } from '../utils/debtPlanner';
+import { simulateGoal } from '../utils/goalSimulator';
+
+import { calculateFHSBreakdown } from '../utils/fhsBreakdown';
+import { SubscriptionLeakDetector } from './SubscriptionLeakDetector';
+import { EmergencyFundPlanner } from './EmergencyFundPlanner';
+import { SIPGrowthSimulator } from './SIPGrowthSimulator';
 
 interface DashboardProps {
   profile: UserProfile;
@@ -14,6 +20,8 @@ export function Dashboard({ profile }: DashboardProps) {
   const COLORS = ['#22c55e', '#0891b2', '#f59e0b', '#7c3aed', '#6b7280'];
   const [isExporting, setIsExporting] = useState(false);
   const [exportError, setExportError] = useState('');
+
+  const fhsBreakdown = calculateFHSBreakdown(profile);
 
   const exportPDF = async () => {
     const dashboardElement = document.getElementById('dashboard-export-area');
@@ -111,20 +119,36 @@ export function Dashboard({ profile }: DashboardProps) {
       <div className="mt-4 border-t-[1.5px] border-faint pt-6">
           <h4 className="text-[0.62rem] font-bold tracking-[0.1em] uppercase text-ghost mb-4">Financial Health Score</h4>
           <div className="flex items-center gap-4">
-              <div className="text-4xl font-serif text-forest">{profile.metrics.financialHealthScore || 0} <span className="text-lg text-gray-400">/ 100</span></div>
+              <div className="text-4xl font-serif text-forest">{fhsBreakdown.overallScore} <span className="text-lg text-gray-400">/ 100</span></div>
               <div className="flex-1 bg-gray-100 rounded-full h-3">
-                  <div className={`h-3 rounded-full transition-all ${profile.metrics.financialHealthScore >= 80 ? 'bg-green-500' : profile.metrics.financialHealthScore >= 50 ? 'bg-yellow-500' : 'bg-red-500'}`} style={{ width: `${profile.metrics.financialHealthScore || 0}%` }}></div>
+                  <div className={`h-3 rounded-full transition-all ${fhsBreakdown.overallScore >= 80 ? 'bg-green-500' : fhsBreakdown.overallScore >= 50 ? 'bg-yellow-500' : 'bg-red-500'}`} style={{ width: `${fhsBreakdown.overallScore}%` }}></div>
               </div>
           </div>
-          <div className="mt-4 text-sm text-gray-600 bg-gray-50 border border-gray-100 rounded-lg p-3">
-             <div className="font-semibold text-gray-800 mb-1">How is this calculated?</div>
-             Your score reflects your savings rate, debt-to-income ratio, emergency fund, and investment consistency. 
-             {profile.metrics.savingsRate < 20 ? " Try to increase your savings pattern to improve this score." : 
-               profile.metrics.emergencyFundRunwayMonths < 6 ? " Building a larger emergency fund will boost your score." :
-               " You are doing great! Keep investing your surplus."}
-             <br/>
-             <div className="font-semibold text-gray-800 mt-2 mb-1">Next Action:</div>
-             <div>{profile.metrics.financialHealthScore >= 0 ? "Review the AI Copilot recommendations to maximize your score." : "Complete your profile."}</div>
+          <div className="mt-4 text-sm text-gray-600 bg-gray-50 border border-gray-100 rounded-lg p-4">
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+               {fhsBreakdown.categories.map((cat, idx) => (
+                 <div key={idx} className="flex flex-col gap-1">
+                   <div className="flex justify-between text-xs font-semibold">
+                     <span>{cat.name}</span>
+                     <span className={cat.score >= 80 ? 'text-green-600' : cat.score >= 50 ? 'text-yellow-600' : 'text-red-500'}>{cat.score}/100</span>
+                   </div>
+                   <div className="w-full bg-gray-200 rounded-full h-1.5 opacity-60">
+                     <div className={`h-1.5 rounded-full ${cat.score >= 80 ? 'bg-green-500' : cat.score >= 50 ? 'bg-yellow-500' : 'bg-red-500'}`} style={{ width: `${cat.score}%` }}></div>
+                   </div>
+                   <div className="text-[0.65rem] text-gray-500 italic leading-tight mt-1">{cat.explanation}</div>
+                 </div>
+               ))}
+             </div>
+             {fhsBreakdown.topWeaknesses.length > 0 && (
+               <div className="mt-4 pt-3 border-t border-gray-200">
+                 <div className="font-semibold text-gray-800 text-xs mb-2">Fastest paths to improve:</div>
+                 <ul className="list-disc pl-4 text-xs space-y-1">
+                   {fhsBreakdown.fastestActions.map((action, i) => (
+                     <li key={i}>{action}</li>
+                   ))}
+                 </ul>
+               </div>
+             )}
           </div>
       </div>
 
@@ -179,23 +203,48 @@ export function Dashboard({ profile }: DashboardProps) {
 
       {profile.goals && profile.goals.length > 0 && (
         <div className="mt-4 border-t border-gray-100 pt-6">
-          <h4 className="text-sm font-semibold text-gray-700 mb-4">Goals Progress</h4>
+          <h4 className="text-[0.62rem] font-bold tracking-[0.1em] uppercase text-ghost mb-4">Goal Simulator</h4>
           <div className="space-y-4">
             {profile.goals.map((g, i) => {
+              const sim = simulateGoal(g, profile);
               const pct = g.target > 0 ? Math.min(100, Math.round((g.saved / g.target) * 100)) : 0;
               return (
-                <div key={i} className="flex flex-col gap-2 p-3 bg-gray-50 rounded-lg border border-gray-100">
-                  <div className="flex justify-between text-sm">
-                    <span className="font-semibold text-gray-800">{g.name}</span>
-                    <span className="text-gray-500">{fmtShort(g.saved)} / {fmtShort(g.target)} ({pct}%)</span>
+                <div key={i} className="flex flex-col gap-2 p-4 bg-gray-50 rounded-lg border border-gray-100">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-gray-800 text-sm">{g.name}</span>
+                    <span className={`text-[0.65rem] uppercase font-bold tracking-wider px-2 py-1 rounded ${sim.status === 'on-track' || sim.status === 'completed' ? 'bg-green-100 text-green-700' : sim.status === 'aggressive' ? 'bg-orange-100 text-orange-700' : 'bg-red-100 text-red-700'}`}>
+                       {sim.status.replace('-', ' ')}
+                    </span>
                   </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div className="bg-[#1a7a4a] h-2 rounded-full transition-all duration-1000 ease-out" style={{ width: `${pct}%` }}></div>
+                  
+                  <div className="flex justify-between text-xs text-gray-600 mt-1">
+                    <span>{fmtShort(g.saved)} saved of {fmtShort(g.target)}</span>
+                    <span className="font-semibold">{pct}%</span>
                   </div>
-                  <div className="text-xs text-gray-500 mt-1 flex justify-between">
-                     <span>Needed: {fmt(g.monthlyNeeded || 0)} / month</span>
-                     {g.probabilityOfSuccess && g.probabilityOfSuccess >= 0.8 ? <span className="text-green-600 font-semibold">On Track</span> : <span className="text-orange-500 font-semibold">Needs Attention</span>}
+                  <div className="w-full bg-gray-200 rounded-full h-1.5 overflow-hidden">
+                    <div className="bg-[#1a7a4a] h-1.5 rounded-full transition-all duration-1000 ease-out" style={{ width: `${pct}%` }}></div>
                   </div>
+                  
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                     <div className="bg-white p-2 rounded border border-gray-100 shadow-sm flex flex-col gap-0.5">
+                        <span className="text-[0.6rem] uppercase text-gray-400 font-semibold tracking-wider">SIP Required</span>
+                        <span className="font-mono font-medium text-gray-800">{fmt(sim.suggestedMonthlySIP)}/mo</span>
+                     </div>
+                     <div className="bg-white p-2 rounded border border-gray-100 shadow-sm flex flex-col gap-0.5">
+                        <span className="text-[0.6rem] uppercase text-gray-400 font-semibold tracking-wider">Timeline</span>
+                        <span className="font-mono font-medium text-gray-800">{sim.monthsToComplete >= 0 ? `${sim.monthsToComplete} months` : 'Stalled'}</span>
+                     </div>
+                  </div>
+                  {sim.status === 'aggressive' && (
+                      <div className="text-[0.65rem] text-orange-600 mt-1 italic">
+                          Warning: The required SIP is more than 50% of your current monthly surplus.
+                      </div>
+                  )}
+                  {sim.status === 'behind' && sim.monthsToComplete > 0 && g.months && (
+                      <div className="text-[0.65rem] text-gray-500 mt-1 italic">
+                          At your current stated contribution, this will take {sim.monthsToComplete} months.
+                      </div>
+                  )}
                 </div>
               );
             })}
@@ -227,6 +276,17 @@ export function Dashboard({ profile }: DashboardProps) {
           </div>
         );
       })()}
+
+      <div className="mt-8 pt-6 border-t-[1.5px] border-faint">
+         <h4 className="text-[0.62rem] font-bold tracking-[0.1em] uppercase text-ghost mb-4">Financial Tools</h4>
+         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <SubscriptionLeakDetector profile={profile} />
+            <EmergencyFundPlanner profile={profile} />
+            <div className="col-span-1 lg:col-span-2">
+                <SIPGrowthSimulator />
+            </div>
+         </div>
+      </div>
 
     </div>
   );
