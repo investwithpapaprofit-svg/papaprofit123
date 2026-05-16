@@ -1,9 +1,8 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, Suspense, lazy } from 'react';
 import { auth, db } from './firebase';
 import { finance } from './finance';
 import { Portfolio } from './components/Portfolio';
 import DOMPurify from 'dompurify';
-import { Suspense, lazy } from 'react';
 import { useAuth } from './hooks/useAuth';
 import { useProfile } from './hooks/useProfile';
 import { useChat } from './hooks/useChat';
@@ -11,8 +10,11 @@ import { LoginScreen } from './components/LoginScreen';
 import { ChatWindow } from './components/ChatWindow';
 import { ChatInput } from './components/ChatInput';
 import { ConfirmationModal } from './components/ConfirmationModal';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
+import { Menu } from 'lucide-react';
 import { FinancialSourceEditor } from './components/FinancialSourceEditor';
+
 const Dashboard = lazy(() => import('./components/Dashboard').then(module => ({ default: module.Dashboard })));
 const Sidebar = lazy(() => import('./components/Sidebar').then(module => ({ default: module.Sidebar })));
 const PremiumModal = lazy(() => import('./components/PremiumModal').then(module => ({ default: module.PremiumModal })));
@@ -24,6 +26,7 @@ export default function App() {
 
   const [showProfile, setShowProfile] = useState(false);
   const [showDashboard, setShowDashboard] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(true);
   const [showPremiumModal, setShowPremiumModal] = useState(false);
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
@@ -32,6 +35,17 @@ export default function App() {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
+  
+  const [localName, setLocalName] = useState(profile?.personal?.name || '');
+  const [localAge, setLocalAge] = useState<string | number>(profile?.personal?.age || '');
+  const [localRiskProfile, setLocalRiskProfile] = useState(profile?.personal?.riskProfile || 'moderate');
+
+  useEffect(() => {
+    setLocalName(profile?.personal?.name || '');
+    setLocalAge(profile?.personal?.age || '');
+    setLocalRiskProfile(profile?.personal?.riskProfile || 'moderate');
+  }, [profile?.personal?.name, profile?.personal?.age, profile?.personal?.riskProfile]);
+
   const chatEndRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -98,13 +112,13 @@ export default function App() {
     // 2. Apply custom formatting
     const html = escapedText
       .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      .replace(/^### (.+)/gm, '<span class="section-head">$1</span>')
+      .replace(/^## (.+)/gm, '<span class="section-head">$1</span>')
+      .replace(/^# (.+)/gm, '<span class="section-head">$1</span>')
+      .replace(/^• (.+)/gm, '&bull; $1')
+      .replace(/^- (.+)/gm, '&bull; $1')
       .replace(/\n\n/g, '<br/><br/>')
-      .replace(/\n/g, '<br/>')
-      .replace(/### (.*?)/g, '<span class="section-head">$1</span>')
-      .replace(/## (.*?)/g, '<span class="section-head">$1</span>')
-      .replace(/# (.*?)/g, '<span class="section-head">$1</span>')
-      .replace(/• (.*?)/g, '&bull; $1')
-      .replace(/- (.*?)/g, '&bull; $1');
+      .replace(/\n/g, '<br/>');
     
     // 3. Sanitize the final HTML
     return DOMPurify.sanitize(html);
@@ -146,7 +160,12 @@ export default function App() {
         </div>
       )}
       <div className="topbar">
-        <div className="topbar-logo"><span className="w-2 h-2 rounded-full bg-lime shadow-[0_0_8px_var(--color-lime)] animate-pulse"></span> PapaProfit</div>
+        <div className="flex items-center gap-2 md:gap-0">
+          <button className="md:hidden p-1 -ml-2 text-gray-500 hover:bg-gray-100 rounded-md" onClick={() => setIsMobileMenuOpen(true)}>
+            <Menu size={20} />
+          </button>
+          <div className="topbar-logo"><span className="w-2 h-2 rounded-full bg-lime shadow-[0_0_8px_var(--color-lime)] animate-pulse"></span> PapaProfit</div>
+        </div>
         <div className="topbar-right">
           <button 
             onClick={() => { setShowDashboard(!showDashboard); setShowProfile(false); }}
@@ -197,7 +216,9 @@ export default function App() {
       <div className="app-layout">
         {/* SIDEBAR */}
         <Suspense fallback={<div className="sidebar animate-pulse bg-off"></div>}>
-          <Sidebar profile={profile} setShowPremiumModal={setShowPremiumModal} />
+          <ErrorBoundary>
+            <Sidebar profile={profile} setShowPremiumModal={setShowPremiumModal} isOpen={isMobileMenuOpen} onClose={() => setIsMobileMenuOpen(false)} />
+          </ErrorBoundary>
         </Suspense>
 
         {/* MAIN AREA */}
@@ -206,35 +227,39 @@ export default function App() {
           {showDashboard ? (
             <div className="flex-1 overflow-y-auto p-4 md:p-8 bg-[#f4f6f4]">
                <Suspense fallback={<div className="p-8 text-center text-gray-500">Loading Dashboard...</div>}>
-                 <Dashboard profile={profile} />
+                 <ErrorBoundary>
+                   <Dashboard profile={profile} />
+                 </ErrorBoundary>
                </Suspense>
             </div>
           ) : (
-            <div className="chat-area flex-1 flex flex-col h-full bg-[#f4f6f4]">
-              <div className="chat-header">
-                <h2>Your AI Financial Advisor</h2>
-                <p>Tell me about your finances — income, expenses, loans, goals, anything.</p>
+            <ErrorBoundary>
+              <div className="chat-area flex-1 flex flex-col h-full bg-[#f4f6f4]">
+                <div className="chat-header">
+                  <h2>Your AI Financial Advisor</h2>
+                  <p>Tell me about your finances — income, expenses, loans, goals, anything.</p>
+                </div>
+
+                <ChatWindow
+                  chatHistory={chatHistory}
+                  isTyping={isTyping}
+                  formatMessage={formatAIResponse}
+                  chatEndRef={chatEndRef}
+                  userName={user.displayName || undefined}
+                />
+
+                <ChatInput
+                  input={input}
+                  onInput={setInput}
+                  onSend={onSendWrapper}
+                  isTyping={isTyping}
+                  showSuggestions={showSuggestions}
+                  onSkipSetup={() => onSendWrapper("skip setup")}
+                  showSkipButton={chatHistory.length > 0 && !profile.onboardingCompleted}
+                  setShowPrivacyPolicy={setShowPrivacyPolicy}
+                />
               </div>
-
-              <ChatWindow
-                chatHistory={chatHistory}
-                isTyping={isTyping}
-                formatMessage={formatAIResponse}
-                chatEndRef={chatEndRef}
-                userName={user.displayName || undefined}
-              />
-
-              <ChatInput
-                input={input}
-                onInput={setInput}
-                onSend={onSendWrapper}
-                isTyping={isTyping}
-                showSuggestions={showSuggestions}
-                onSkipSetup={() => onSendWrapper("skip setup")}
-                showSkipButton={chatHistory.length > 0 && !profile.onboardingCompleted}
-                setShowPrivacyPolicy={setShowPrivacyPolicy}
-              />
-            </div>
+            </ErrorBoundary>
           )}
         </div>
       </div>
@@ -255,33 +280,56 @@ export default function App() {
               <div className="profile-row">
                 <span className="key">Name</span>
                 <input
-                  defaultValue={profile.personal?.name || ''}
-                  onBlur={async (e) => {
-                    const newProfile = { ...profile, personal: { ...profile.personal, name: e.target.value }};
-                    await saveProfile(newProfile);
-                    showToast('✓ Saved');
+                  value={localName}
+                  onChange={(e) => setLocalName(e.target.value)}
+                  onBlur={async () => {
+                    if (localName !== profile.personal?.name) {
+                      const newProfile = { ...profile, personal: { ...profile.personal, name: localName }};
+                      try {
+                        await saveProfile(newProfile);
+                        showToast('Name updated');
+                      } catch (err) {
+                        showToast('Failed to save Name');
+                      }
+                    }
                   }}
                   className="val border-b border-gray-200 bg-transparent text-right outline-none"
                 />
               </div>
               <div className="profile-row">
                 <span className="key">Age</span>
-                <input type="number" defaultValue={profile.personal?.age || ''}
-                  onBlur={async (e) => {
-                    const newProfile = { ...profile, personal: { ...profile.personal, age: Number(e.target.value) }};
-                    await saveProfile(newProfile);
-                    showToast('✓ Saved');
+                <input type="number" min="1" max="120" value={localAge}
+                  onChange={(e) => setLocalAge(e.target.value)}
+                  onBlur={async () => {
+                    const newAge = Number(localAge);
+                    if (!isNaN(newAge) && newAge !== profile.personal?.age && newAge >= 1 && newAge <= 120) {
+                      const newProfile = { ...profile, personal: { ...profile.personal, age: newAge }};
+                      try {
+                        await saveProfile(newProfile);
+                        showToast('Age updated');
+                      } catch (err) {
+                        showToast('Failed to save Age');
+                      }
+                    } else if (newAge < 1 || newAge > 120) {
+                       setLocalAge(profile.personal?.age || '');
+                    }
                   }}
                   className="val border-b border-gray-200 bg-transparent text-right outline-none w-16"
                 />
               </div>
               <div className="profile-row">
                 <span className="key">Risk Profile</span>
-                <select defaultValue={profile.personal?.riskProfile || 'moderate'}
+                <select value={localRiskProfile}
                   onChange={async (e) => {
-                    const newProfile = { ...profile, personal: { ...profile.personal, riskProfile: e.target.value as any }};
-                    await saveProfile(newProfile);
-                    showToast('✓ Saved');
+                    const val = e.target.value as any;
+                    setLocalRiskProfile(val);
+                    const newProfile = { ...profile, personal: { ...profile.personal, riskProfile: val }};
+                    try {
+                      await saveProfile(newProfile);
+                      showToast('Risk profile updated');
+                    } catch (err) {
+                      showToast('Failed to save Risk Profile');
+                    }
                   }}
                   className="val bg-transparent text-right outline-none"
                 >
@@ -301,7 +349,7 @@ export default function App() {
                 finance.recalculateMetrics(newProfile);
                 setProfile(newProfile);
                 await saveProfile(newProfile);
-                showToast('✓ Saved');
+                showToast('Income updated');
               }}
             />
             <div className="profile-row font-bold mb-4 px-3"><span className="key">Total Monthly</span><span className="val">{fmt(finance.totalIncome(profile))}</span></div>
@@ -315,7 +363,7 @@ export default function App() {
                 finance.recalculateMetrics(newProfile);
                 setProfile(newProfile);
                 await saveProfile(newProfile);
-                showToast('✓ Saved');
+                showToast('Expenses updated');
               }}
             />
             <div className="profile-row font-bold mb-4 px-3"><span className="key">Total Monthly</span><span className="val">{fmt(finance.totalExpenses(profile))}</span></div>
@@ -338,7 +386,7 @@ export default function App() {
                 finance.recalculateMetrics(newProfile);
                 setProfile(newProfile);
                 await saveProfile(newProfile);
-                showToast('✓ Saved');
+                showToast('Assets updated');
               }}
             />
             {finance.totalAssets(profile) === 0 && profile.portfolio.length === 0 && <div className="profile-row mb-4"><span className="key" style={{ color: '#ccc' }}>None added yet</span></div>}
@@ -349,7 +397,7 @@ export default function App() {
                   finance.recalculateMetrics(newProfile);
                   setProfile(newProfile);
                   saveProfile(newProfile);
-                  showToast('✓ Saved');
+                  showToast('Portfolio updated');
                 }} />
               </div>
             </div>
@@ -367,7 +415,7 @@ export default function App() {
                 finance.recalculateMetrics(newProfile);
                 setProfile(newProfile);
                 await saveProfile(newProfile);
-                showToast('✓ Saved');
+                showToast('Liabilities updated');
               }}
             />
             <div className="profile-section">
@@ -375,7 +423,7 @@ export default function App() {
               {(profile.goals || []).map((g, i) => {
                 const progress = g.target > 0 ? Math.min(100, Math.round(((g.saved || 0) / g.target) * 100)) : 0;
                 return (
-                  <div key={i} className="mb-4">
+                  <div key={g.id || g.name || i} className="mb-4">
                     <div className="profile-row mb-1">
                       <span className="key font-semibold">{g.name}</span>
                       <span className="val text-sm">
@@ -407,7 +455,7 @@ export default function App() {
                 finance.recalculateMetrics(newProfile);
                 setProfile(newProfile);
                 await saveProfile(newProfile);
-                showToast('✓ Saved');
+                showToast('Subscriptions updated');
               }}
             />
             <div className="profile-section mt-6 pt-4 border-t border-gray-100">

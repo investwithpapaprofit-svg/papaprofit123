@@ -15,7 +15,17 @@ export function useAuth() {
       setLoginError('');
       await signInWithPopup(auth, googleProvider);
     } catch (e: any) {
-      setLoginError(`Login failed: ${e.message}`);
+      let msg = 'An unexpected error occurred. Please try again.';
+      if (e.code === 'auth/popup-closed-by-user') {
+        msg = 'Login was cancelled.';
+      } else if (e.code === 'auth/network-request-failed') {
+        msg = 'Network issue. Check your connection.';
+      } else if (e.code === 'auth/too-many-requests') {
+        msg = 'Too many attempts. Try again later.';
+      } else if (e.message) {
+        msg = e.message;
+      }
+      setLoginError(msg);
     }
   };
 

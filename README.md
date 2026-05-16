@@ -27,7 +27,7 @@ This project has been upgraded to a **production-grade prototype**.
 
 ## Known Limitations & Production Caveats
 
-- **Mocked Stripe Integration:** The "Papa Premium" Stripe flow is a UI mock. The application does not currently process real payments or handle webhooks.
+- **Stripe Integration:** Currently supports real checkout sessions via Stripe if `STRIPE_SECRET_KEY` is provided. If absent and `ENABLE_MOCK_PREMIUM` is true, it falls back to a mock flow for development purposes.
 - **Firebase Transitive Audit Warnings:** `npm audit` will show 8 low-severity warnings originating from `@google-cloud/firestore` dependencies (e.g. `teeny-request`, `@tootallnate/once`). These are deep transitive dependencies of `firebase-admin` and are safe to ignore for this deployment, but they exist.
 - **AI Limitations:** While the AI is instructed to sound premium, it is not a certified financial planner. Calculations inside chat may occasionally hallucinate; rely on the Dashboard tools for deterministic calculations.
 - **Desktop/Mobile:** Mobile polish has been applied (touch targets, fixed 100dvh for iOS, responsive stacked grids), but complex charts and dense data are still easiest to consume on Desktop.

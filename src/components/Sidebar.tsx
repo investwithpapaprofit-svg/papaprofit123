@@ -7,9 +7,11 @@ import { generateWeeklyReport } from '../utils/weeklyReport';
 interface SidebarProps {
   profile: UserProfile;
   setShowPremiumModal: (s: boolean) => void;
+  isOpen?: boolean;
+  onClose?: () => void;
 }
 
-export function Sidebar({ profile, setShowPremiumModal }: SidebarProps) {
+export function Sidebar({ profile, setShowPremiumModal, isOpen, onClose }: SidebarProps) {
   const fhsScore = profile.metrics.financialHealthScore;
   const fhsInfo = finance.fhsLabel(fhsScore);
   const nw = profile.metrics.netWorth;
@@ -35,11 +37,21 @@ export function Sidebar({ profile, setShowPremiumModal }: SidebarProps) {
   const dashoffset = 314 - ((fhsPct / 100) * 314);
 
   return (
-    <div className="sidebar" id="sb2">
-      <div className="sidebar-section">
-        <div className="sidebar-title">Financial Health Score</div>
-        <div className="fhs-circle-wrap group">
-          <div className="fhs-circle">
+    <>
+      {isOpen && onClose && (
+        <div className="fixed inset-0 bg-black/50 z-40 md:hidden" onClick={onClose} />
+      )}
+      <div className={`sidebar fixed inset-y-0 left-0 z-50 transform transition-transform duration-300 md:relative md:translate-x-0 bg-white md:bg-transparent shadow-2xl md:shadow-none w-64 md:w-[268px] ${isOpen ? 'translate-x-0 flex' : '-translate-x-full md:flex'}`}>
+        {isOpen && onClose && (
+           <h3 className="px-4 py-2 font-bold flex justify-between items-center text-sm border-b md:hidden">
+             Menu
+             <button onClick={onClose} className="text-gray-500">✕</button>
+           </h3>
+        )}
+        <div className="sidebar-section">
+          <div className="sidebar-title">Financial Health Score</div>
+          <div className="fhs-circle-wrap group">
+            <div className="fhs-circle">
             <svg width="120" height="120" viewBox="0 0 120 120" className="overflow-visible block">
               <defs>
                 <linearGradient id="greenGrad" x1="0%" y1="0%" x2="100%" y2="0%">
@@ -147,5 +159,6 @@ export function Sidebar({ profile, setShowPremiumModal }: SidebarProps) {
         <button className="premium-btn text-center flex items-center justify-center gap-2" onClick={() => setShowPremiumModal(true)}>⚡ Go Pro — ₹499/mo</button>
       </div>
     </div>
+    </>
   );
 }

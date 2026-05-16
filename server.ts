@@ -76,7 +76,7 @@ const requireAuth = async (req: express.Request, res: express.Response, next: ex
 async function startServer() {
   const app = express();
   app.set('trust proxy', 1);
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
   // Security Middlewares
   app.use(helmet({
@@ -113,8 +113,35 @@ async function startServer() {
     validate: { trustProxy: false, xForwardedForHeader: false, forwardedHeader: false }
   });
 
+  // Simple in-memory per-user AI rate limiter
+  const userAiUsageMap = new Map<string, { count: number, resetAt: number }>();
+  const USER_AI_LIMIT_MAX = 50;
+  const USER_AI_LIMIT_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
+
+  const perUserAiLimiter = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const uid = (req as any).user?.uid;
+    if (!uid) {
+      return next(); // Unauthenticated won't reach here anyway due to requireAuth
+    }
+    const now = Date.now();
+    let usage = userAiUsageMap.get(uid);
+
+    if (!usage || now > usage.resetAt) {
+      usage = { count: 0, resetAt: now + USER_AI_LIMIT_WINDOW_MS };
+    }
+
+    if (usage.count >= USER_AI_LIMIT_MAX) {
+      return res.status(429).json({ error: 'Personal AI quota exceeded. Please wait 10 minutes.' });
+    }
+
+    usage.count++;
+    userAiUsageMap.set(uid, usage);
+    next();
+  };
+
   // Webhook for premium checkout (MUST be before express.json() for raw body verification)
   app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }), async (req, res) => {
+    if (!firestore) return res.status(503).send("Database unavailable");
     const signature = req.headers['stripe-signature'] as string;
     const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
@@ -254,7 +281,7 @@ async function startServer() {
     chatHistory: z.array(z.object({ role: z.string(), content: z.string() })).max(10).optional()
   });
 
-  app.post('/api/ai/parse', requireAuth, aiLimiter, async (req, res) => {
+  app.post('/api/ai/parse', requireAuth, aiLimiter, perUserAiLimiter, async (req, res) => {
     const activeKey = process.env.GROQ_API_KEY || '';
     if (!activeKey || activeKey === 'YOUR_GROQ_KEY') {
       return res.status(500).json({ error: 'Groq API key not configured' });
@@ -308,7 +335,8 @@ Example output format: {"intent":"general","confidenceScore":0.9,"clarificationN
     onboardingStep: z.number().min(0).max(8).optional()
   });
 
-  app.post('/api/ai/respond', requireAuth, aiLimiter, async (req, res) => {
+  app.post('/api/ai/respond', requireAuth, aiLimiter, perUserAiLimiter, async (req, res) => {
+    if (!firestore) return res.status(503).json({ error: 'Database unavailable' });
     const activeKey = process.env.GROQ_API_KEY || '';
     if (!activeKey || activeKey === 'YOUR_GROQ_KEY') {
       return res.status(500).json({ error: 'Groq API key not configured' });

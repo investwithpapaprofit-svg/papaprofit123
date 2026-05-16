@@ -57,6 +57,7 @@ export interface Insight {
 }
 
 export interface FinancialGoal {
+  id?: string;
   name: string;
   target: number;
   saved: number;
@@ -67,6 +68,7 @@ export interface FinancialGoal {
 }
 
 export interface Loan {
+  id?: string;
   name: string;
   amount: number; // Total outstanding
   rate: number;

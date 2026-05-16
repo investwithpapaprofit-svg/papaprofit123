@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Trash2 } from 'lucide-react';
 
 export interface FinancialSourceItem {
   name: string;
@@ -50,11 +51,17 @@ export function FinancialSourceEditor({ title, sources, onUpdate, type }: Financ
 
       <div>
         {sources.map((source, i) => (
-          <div key={i} className="profile-row">
+          <div key={i} className="profile-row group">
             <span className="key">{source.name}</span>
             <div className="flex items-center gap-3">
               <span className="val">{fmt(source.value)}</span>
-              <button onClick={() => handleRemove(i)} className="text-red-400 hover:text-red-600 bg-transparent border-none cursor-pointer">✕</button>
+              <button 
+                onClick={() => handleRemove(i)} 
+                className="text-red-400 hover:text-red-600 bg-transparent border-none cursor-pointer"
+                title={`Remove ${source.name}`}
+              >
+                <Trash2 size={16} />
+              </button>
             </div>
           </div>
         ))}

@@ -118,38 +118,51 @@ export function Dashboard({ profile }: DashboardProps) {
 
       <div className="mt-4 border-t-[1.5px] border-faint pt-6">
           <h4 className="text-[0.62rem] font-bold tracking-[0.1em] uppercase text-ghost mb-4">Financial Health Score</h4>
-          <div className="flex items-center gap-4">
-              <div className="text-4xl font-serif text-forest">{fhsBreakdown.overallScore} <span className="text-lg text-gray-400">/ 100</span></div>
-              <div className="flex-1 bg-gray-100 rounded-full h-3">
-                  <div className={`h-3 rounded-full transition-all ${fhsBreakdown.overallScore >= 80 ? 'bg-green-500' : fhsBreakdown.overallScore >= 50 ? 'bg-yellow-500' : 'bg-red-500'}`} style={{ width: `${fhsBreakdown.overallScore}%` }}></div>
-              </div>
-          </div>
-          <div className="mt-4 text-sm text-gray-600 bg-gray-50 border border-gray-100 rounded-lg p-4">
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-               {fhsBreakdown.categories.map((cat, idx) => (
-                 <div key={idx} className="flex flex-col gap-1">
-                   <div className="flex justify-between text-xs font-semibold">
-                     <span>{cat.name}</span>
-                     <span className={cat.score >= 80 ? 'text-green-600' : cat.score >= 50 ? 'text-yellow-600' : 'text-red-500'}>{cat.score}/100</span>
-                   </div>
-                   <div className="w-full bg-gray-200 rounded-full h-1.5 opacity-60">
-                     <div className={`h-1.5 rounded-full ${cat.score >= 80 ? 'bg-green-500' : cat.score >= 50 ? 'bg-yellow-500' : 'bg-red-500'}`} style={{ width: `${cat.score}%` }}></div>
-                   </div>
-                   <div className="text-[0.65rem] text-gray-500 italic leading-tight mt-1">{cat.explanation}</div>
-                 </div>
-               ))}
+          
+          {!profile.onboardingCompleted || !profile.lastUpdated ? (
+             <div className="flex items-center gap-4 animate-pulse">
+                <div className="w-16 h-16 rounded-full border-4 border-gray-200 border-t-gray-400 animate-spin"></div>
+                <div className="flex-1 space-y-2">
+                   <div className="h-4 bg-gray-200 rounded w-1/3"></div>
+                   <div className="h-3 bg-gray-100 rounded w-1/2"></div>
+                </div>
              </div>
-             {fhsBreakdown.topWeaknesses.length > 0 && (
-               <div className="mt-4 pt-3 border-t border-gray-200">
-                 <div className="font-semibold text-gray-800 text-xs mb-2">Fastest paths to improve:</div>
-                 <ul className="list-disc pl-4 text-xs space-y-1">
-                   {fhsBreakdown.fastestActions.map((action, i) => (
-                     <li key={i}>{action}</li>
+          ) : (
+            <div className="animate-in fade-in duration-500">
+              <div className="flex items-center gap-4">
+                  <div className="text-4xl font-serif text-forest">{fhsBreakdown.overallScore} <span className="text-lg text-gray-400">/ 100</span></div>
+                  <div className="flex-1 bg-gray-100 rounded-full h-3">
+                      <div className={`h-3 rounded-full transition-all duration-1000 ${fhsBreakdown.overallScore >= 80 ? 'bg-green-500' : fhsBreakdown.overallScore >= 50 ? 'bg-yellow-500' : 'bg-red-500'}`} style={{ width: `${fhsBreakdown.overallScore}%` }}></div>
+                  </div>
+              </div>
+              <div className="mt-4 text-sm text-gray-600 bg-gray-50 border border-gray-100 rounded-lg p-4 animate-in slide-in-from-bottom-2 fade-in duration-700">
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                   {fhsBreakdown.categories.map((cat, idx) => (
+                     <div key={idx} className="flex flex-col gap-1">
+                       <div className="flex justify-between text-xs font-semibold">
+                         <span>{cat.name}</span>
+                         <span className={cat.score >= 80 ? 'text-green-600' : cat.score >= 50 ? 'text-yellow-600' : 'text-red-500'}>{cat.score}/100</span>
+                       </div>
+                       <div className="w-full bg-gray-200 rounded-full h-1.5 opacity-60">
+                         <div className={`h-1.5 rounded-full ${cat.score >= 80 ? 'bg-green-500' : cat.score >= 50 ? 'bg-yellow-500' : 'bg-red-500'}`} style={{ width: `${cat.score}%` }}></div>
+                       </div>
+                       <div className="text-[0.65rem] text-gray-500 italic leading-tight mt-1">{cat.explanation}</div>
+                     </div>
                    ))}
-                 </ul>
-               </div>
-             )}
-          </div>
+                 </div>
+                 {fhsBreakdown.topWeaknesses.length > 0 && (
+                   <div className="mt-4 pt-3 border-t border-gray-200">
+                     <div className="font-semibold text-gray-800 text-xs mb-2">Fastest paths to improve:</div>
+                     <ul className="list-disc pl-4 text-xs space-y-1">
+                       {fhsBreakdown.fastestActions.map((action, i) => (
+                         <li key={i}>{action}</li>
+                       ))}
+                     </ul>
+                   </div>
+                 )}
+              </div>
+            </div>
+          )}
       </div>
 
       {historyData.length > 1 && (

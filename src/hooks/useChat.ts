@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { UserProfile } from '../types';
 import { parser } from '../parser';
 import { insights } from '../insights';
@@ -11,14 +11,36 @@ export function useChat(
   saveProfile: (p: UserProfile) => Promise<void>,
   user: User | null
 ) {
-  const [chatHistory, setChatHistory] = useState<{ role: string; content: string; updates?: string[] }[]>([]);
+  const [chatHistory, setChatHistory] = useState<{ role: string; content: string; updates?: string[] }[]>(() => {
+    try {
+      const stored = sessionStorage.getItem('papa_chat_history');
+      if (stored) {
+        return JSON.parse(stored);
+      }
+    } catch(e) {}
+    return [];
+  });
   const [isTyping, setIsTyping] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState(0);
   const [input, setInput] = useState('');
 
+  const hasInitialized = useRef(false);
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem('papa_chat_history', JSON.stringify(chatHistory.slice(-10)));
+    } catch(e) {}
+  }, [chatHistory]);
+
   // Add welcome message or start onboarding
   useEffect(() => {
-    if (user && chatHistory.length === 0 && profile.lastUpdated !== '') {
+    if (hasInitialized.current) return;
+    if (!user) return;
+    if (!profile.lastUpdated) return;
+
+    hasInitialized.current = true;
+
+    if (chatHistory.length === 0) {
       if (!profile.onboardingCompleted) {
         setOnboardingStep(1);
         setChatHistory([{ role: 'ai', content: ONBOARDING_QUESTIONS[0] }]);
@@ -27,7 +49,7 @@ export function useChat(
         setChatHistory([{ role: 'ai', content: welcomeMsg }]);
       }
     }
-  }, [profile.onboardingCompleted, profile.lastUpdated, user, chatHistory.length]);
+  }, [profile.onboardingCompleted, profile.lastUpdated, user]);
 
   const handleSend = useCallback(async (text?: string) => {
     const userMsg = (text ?? input).trim();

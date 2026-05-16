@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { User } from 'firebase/auth';
 import { db, handleFirestoreError, OperationType } from '../firebase';
@@ -144,13 +144,19 @@ export function useProfile(user: User | null) {
     }
   }, [user]);
 
+  const profileRef = useRef(profile);
+  useEffect(() => {
+    profileRef.current = profile;
+  }, [profile]);
+
   const saveProfile = useCallback(async (newProfile: UserProfile) => {
     if (!user) return;
-    const profileToSave = sanitizeProfileForWrite(newProfile, profile) as UserProfile;
+    // We use the ref to always get latest profile state and to not recreate saveProfile
+    const profileToSave = sanitizeProfileForWrite(newProfile, profileRef.current) as UserProfile;
     finance.recalculateMetrics(profileToSave);
     try {
       await setDoc(doc(db, 'users', user.uid), { profile: profileToSave }, { merge: true });
-      setProfile({ ...profileToSave, isPremium: profile.isPremium, role: profile.role } as any);
+      setProfile({ ...profileToSave, isPremium: profileRef.current.isPremium, role: profileRef.current.role } as any);
     } catch (e: any) {
       if (e?.message?.includes('client is offline')) {
          console.warn("Firestore client is offline, unable to save profile");
@@ -158,7 +164,7 @@ export function useProfile(user: User | null) {
          handleFirestoreError(e, OperationType.WRITE, `users/${user.uid}`);
       }
     }
-  }, [user, profile]);
+  }, [user]);
 
   return { profile, setProfile, loadProfile, saveProfile };
 }
