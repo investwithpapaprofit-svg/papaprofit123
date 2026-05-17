@@ -14,6 +14,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 
 import { Menu } from 'lucide-react';
 import { FinancialSourceEditor } from './components/FinancialSourceEditor';
+import { QuickOnboarding } from './components/QuickOnboarding';
 
 const Dashboard = lazy(() => import('./components/Dashboard').then(module => ({ default: module.Dashboard })));
 const Sidebar = lazy(() => import('./components/Sidebar').then(module => ({ default: module.Sidebar })));
@@ -21,8 +22,8 @@ const PremiumModal = lazy(() => import('./components/PremiumModal').then(module 
 
 export default function App() {
   const { user, loginError, handleLogin } = useAuth();
-  const { profile, setProfile, loadProfile, saveProfile } = useProfile(user);
-  const { chatHistory, setChatHistory, isTyping, input, setInput, handleSend } = useChat(profile, saveProfile, user);
+  const { profile, setProfile, loadProfile, saveProfile, isLoading: isProfileLoading, loadedChatHistory } = useProfile(user);
+  const { chatHistory, setChatHistory, isTyping, input, setInput, handleSend } = useChat(profile, saveProfile, user, loadedChatHistory);
 
   const [showProfile, setShowProfile] = useState(false);
   const [showDashboard, setShowDashboard] = useState(false);
@@ -217,7 +218,7 @@ export default function App() {
         {/* SIDEBAR */}
         <Suspense fallback={<div className="sidebar animate-pulse bg-off"></div>}>
           <ErrorBoundary>
-            <Sidebar profile={profile} setShowPremiumModal={setShowPremiumModal} isOpen={isMobileMenuOpen} onClose={() => setIsMobileMenuOpen(false)} />
+            <Sidebar profile={profile} setShowPremiumModal={setShowPremiumModal} isOpen={isMobileMenuOpen} onClose={() => setIsMobileMenuOpen(false)} isProfileLoading={isProfileLoading} />
           </ErrorBoundary>
         </Suspense>
 
@@ -228,7 +229,7 @@ export default function App() {
             <div className="flex-1 overflow-y-auto p-4 md:p-8 bg-[#f4f6f4]">
                <Suspense fallback={<div className="p-8 text-center text-gray-500">Loading Dashboard...</div>}>
                  <ErrorBoundary>
-                   <Dashboard profile={profile} />
+                   <Dashboard profile={profile} isProfileLoading={isProfileLoading} />
                  </ErrorBoundary>
                </Suspense>
             </div>
@@ -240,24 +241,40 @@ export default function App() {
                   <p>Tell me about your finances — income, expenses, loans, goals, anything.</p>
                 </div>
 
-                <ChatWindow
-                  chatHistory={chatHistory}
-                  isTyping={isTyping}
-                  formatMessage={formatAIResponse}
-                  chatEndRef={chatEndRef}
-                  userName={user.displayName || undefined}
-                />
+                {!profile.onboardingCompleted ? (
+                  <div className="flex-1 overflow-y-auto">
+                    <QuickOnboarding 
+                      profile={profile} 
+                      userName={user.displayName || 'Friend'} 
+                      onComplete={async (newProfile) => {
+                        await saveProfile(newProfile);
+                        // Add welcome message immediately to chat history
+                        setChatHistory([{ id: crypto.randomUUID(), role: 'ai', content: `**Welcome to PapaProfit!** 🚀\n\nI've set up your initial profile. You can access your full dashboard on the left. What would you like to focus on first? We can discuss investments, debt payoff, or analyze your spending.` }]);
+                      }} 
+                    />
+                  </div>
+                ) : (
+                  <>
+                    <ChatWindow
+                      chatHistory={chatHistory}
+                      isTyping={isTyping}
+                      formatMessage={formatAIResponse}
+                      chatEndRef={chatEndRef}
+                      userName={user.displayName || undefined}
+                    />
 
-                <ChatInput
-                  input={input}
-                  onInput={setInput}
-                  onSend={onSendWrapper}
-                  isTyping={isTyping}
-                  showSuggestions={showSuggestions}
-                  onSkipSetup={() => onSendWrapper("skip setup")}
-                  showSkipButton={chatHistory.length > 0 && !profile.onboardingCompleted}
-                  setShowPrivacyPolicy={setShowPrivacyPolicy}
-                />
+                    <ChatInput
+                      input={input}
+                      onInput={setInput}
+                      onSend={onSendWrapper}
+                      isTyping={isTyping}
+                      showSuggestions={showSuggestions}
+                      onSkipSetup={() => {}}
+                      showSkipButton={false}
+                      setShowPrivacyPolicy={setShowPrivacyPolicy}
+                    />
+                  </>
+                )}
               </div>
             </ErrorBoundary>
           )}

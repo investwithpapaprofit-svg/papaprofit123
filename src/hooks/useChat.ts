@@ -2,16 +2,16 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { UserProfile } from '../types';
 import { parser } from '../parser';
 import { insights } from '../insights';
-import { ONBOARDING_QUESTIONS } from '../constants';
 import { User } from 'firebase/auth';
 import { mapChatError } from '../utils/mapChatError';
 
 export function useChat(
   profile: UserProfile,
   saveProfile: (p: UserProfile) => Promise<void>,
-  user: User | null
+  user: User | null,
+  loadedChatHistory: any[] = []
 ) {
-  const [chatHistory, setChatHistory] = useState<{ role: string; content: string; updates?: string[] }[]>(() => {
+  const [chatHistory, setChatHistory] = useState<{ id?: string, role: string; content: string; updates?: string[] }[]>(() => {
     try {
       const stored = sessionStorage.getItem('papa_chat_history');
       if (stored) {
@@ -21,18 +21,40 @@ export function useChat(
     return [];
   });
   const [isTyping, setIsTyping] = useState(false);
-  const [onboardingStep, setOnboardingStep] = useState(0);
   const [input, setInput] = useState('');
+
+  // Hydrate chat history from firestore once it's available and we have nothing or less in local storage.
+  const hasHydratedHistory = useRef(false);
+  useEffect(() => {
+    if (loadedChatHistory && loadedChatHistory.length > 0 && !hasHydratedHistory.current) {
+      setChatHistory(prev => {
+        if (prev.length <= loadedChatHistory.length) {
+          hasHydratedHistory.current = true;
+          return loadedChatHistory;
+        }
+        return prev;
+      });
+    }
+  }, [loadedChatHistory]);
 
   const hasInitialized = useRef(false);
 
   useEffect(() => {
     try {
-      sessionStorage.setItem('papa_chat_history', JSON.stringify(chatHistory.slice(-10)));
+      sessionStorage.setItem('papa_chat_history', JSON.stringify(chatHistory.slice(-15)));
+      if (user && chatHistory.length > 0) {
+         import('firebase/firestore').then(({ doc, setDoc }) => {
+           import('../firebase').then(({ db }) => {
+             setDoc(doc(db, 'users', user.uid), { 
+               chatHistory: chatHistory.slice(-15) 
+             }, { merge: true }).catch((e) => console.log('Chat sync error', e));
+           });
+         });
+      }
     } catch(e) {}
-  }, [chatHistory]);
+  }, [chatHistory, user]);
 
-  // Add welcome message or start onboarding
+  // Add welcome message
   useEffect(() => {
     if (hasInitialized.current) return;
     if (!user) return;
@@ -40,14 +62,9 @@ export function useChat(
 
     hasInitialized.current = true;
 
-    if (chatHistory.length === 0) {
-      if (!profile.onboardingCompleted) {
-        setOnboardingStep(1);
-        setChatHistory([{ role: 'ai', content: ONBOARDING_QUESTIONS[0] }]);
-      } else {
-        const welcomeMsg = `**Welcome back to PapaProfit, ${user.displayName?.split(' ')[0]}! 👋**\n\nI'm ready to help you manage your finances. Your current net worth is **₹${profile.metrics?.netWorth?.toLocaleString('en-IN') ?? '0'}**.\n\nWhat would you like to focus on today?`;
-        setChatHistory([{ role: 'ai', content: welcomeMsg }]);
-      }
+    if (chatHistory.length === 0 && profile.onboardingCompleted) {
+      const welcomeMsg = `**Welcome back to PapaProfit, ${user.displayName?.split(' ')[0]}! 👋**\n\nI'm ready to help you manage your finances.\n\nWhat would you like to focus on today?`;
+      setChatHistory([{ id: crypto.randomUUID(), role: 'ai', content: welcomeMsg }]);
     }
   }, [profile.onboardingCompleted, profile.lastUpdated, user]);
 
@@ -55,17 +72,14 @@ export function useChat(
     const userMsg = (text ?? input).trim();
     if (!userMsg) return;
     setInput('');
-    setChatHistory(h => [...h, { role: 'user', content: userMsg }]);
+    setChatHistory(h => [...h, { id: crypto.randomUUID(), role: 'user', content: userMsg }]);
     setIsTyping(true);
-
-    const isFrustrated = /\b(fuck|shit|stupid|dumb|bs)\b/i.test(userMsg);
-    const isSkipRequest = /skip|stop|don't ask|dont ask|just chat/i.test(userMsg);
 
     try {
       const parsed = await parser.parse(userMsg, profile, chatHistory);
 
       if (parsed.clarificationMsg) {
-        setChatHistory(prev => [...prev, { role: 'ai', content: parsed.clarificationMsg! }]);
+        setChatHistory(prev => [...prev, { id: crypto.randomUUID(), role: 'ai', content: parsed.clarificationMsg! }]);
         setIsTyping(false);
         return;
       }
@@ -76,35 +90,17 @@ export function useChat(
         await saveProfile(updatedProfile);
       }
 
-      let reply = '';
-      if ((isSkipRequest || isFrustrated) && !profile.onboardingCompleted) {
-        const finalProfile = { ...updatedProfile, onboardingCompleted: true };
-        await saveProfile(finalProfile);
-        reply = isFrustrated 
-          ? "I'm really sorry for being repetitive. I've stopped the guided setup. I'm listening now—tell me exactly what you want to fix or update in your finances."
-          : "Understood! I'll stop the guided setup. We can just chat naturally now. What's on your mind regarding your finances?";
-        setOnboardingStep(0);
-      } else {
-        reply = await insights.generateResponse(userMsg, parsed, updatedProfile, [...chatHistory, {role: 'user', content: userMsg}], onboardingStep);
-        if (parsed.intent !== 'general' && parsed.updates.length > 0 && !profile.onboardingCompleted) {
-            setOnboardingStep(s => Math.min(s + 1, ONBOARDING_QUESTIONS.length));
-            if (onboardingStep >= ONBOARDING_QUESTIONS.length - 1) { // - 1 because we increment afterwards
-               const finalProfile = { ...updatedProfile, onboardingCompleted: true };
-               await saveProfile(finalProfile);
-               setOnboardingStep(0);
-            }
-        }
-      }
+      const reply = await insights.generateResponse(userMsg, parsed, updatedProfile, [...chatHistory, {role: 'user', content: userMsg}], 0);
 
-      setChatHistory(h => [...h, { role: 'ai', content: reply, updates: parsed.updates }]);
+      setChatHistory(h => [...h, { id: crypto.randomUUID(), role: 'ai', content: reply, updates: parsed.updates }]);
     } catch (error: any) {
       console.error('Handle send error:', error);
       const errMsg = mapChatError(error);
-      setChatHistory(prev => [...prev, { role: 'ai', content: errMsg }]);
+      setChatHistory(prev => [...prev, { id: crypto.randomUUID(), role: 'ai', content: errMsg }]);
     } finally {
       setIsTyping(false);
     }
-  }, [input, profile, chatHistory, onboardingStep, saveProfile]);
+  }, [input, profile, chatHistory, saveProfile]);
 
-  return { chatHistory, isTyping, onboardingStep, input, setInput, handleSend, setChatHistory };
+  return { chatHistory, isTyping, input, setInput, handleSend, setChatHistory };
 }

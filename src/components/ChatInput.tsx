@@ -25,11 +25,12 @@ export function ChatInput({
     <>
       {showSuggestions && (
         <div className="suggestions">
-          <div className="sug" onClick={() => onSend('I earn ₹60,000/month')}>I earn ₹60,000/month</div>
-          <div className="sug" onClick={() => onSend('I have a home loan of ₹20 lakh')}>I have a home loan of ₹20 lakh</div>
-          <div className="sug" onClick={() => onSend('I want to buy a house in 5 years')}>I want to buy a house in 5 years</div>
-          <div className="sug" onClick={() => onSend('Should I start a business?')}>Should I start a business?</div>
-          <div className="sug" onClick={() => onSend('How is my financial health?')}>How is my financial health?</div>
+          <div className="sug" onClick={() => onSend('Analyze my spending')}>Analyze my spending</div>
+          <div className="sug" onClick={() => onSend('Help me build wealth')}>Help me build wealth</div>
+          <div className="sug" onClick={() => onSend('Plan my SIP / Investments')}>Plan my SIP</div>
+          <div className="sug" onClick={() => onSend('How can I reduce my debt faster?')}>Reduce debt faster</div>
+          <div className="sug" onClick={() => onSend('How do I improve my Financial Health Score?')}>Improve my FHS</div>
+          <div className="sug" onClick={() => onSend('Help me create an emergency fund')}>Create an emergency fund</div>
         </div>
       )}
 

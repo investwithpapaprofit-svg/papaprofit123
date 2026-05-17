@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDocFromServer, setDoc } from 'firebase/firestore';
 import { User } from 'firebase/auth';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { UserProfile } from '../types';
@@ -37,15 +37,22 @@ const defaultProfile = (): UserProfile => (JSON.parse(JSON.stringify(DEFAULT_PRO
 
 export function useProfile(user: User | null) {
   const [profile, setProfile] = useState<UserProfile>(defaultProfile());
+  const [loadedChatHistory, setLoadedChatHistory] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   const loadProfile = useCallback(async () => {
     if (!user) return;
+    setIsLoading(true);
     try {
       const ref = doc(db, 'users', user.uid);
-      const snap = await getDoc(ref);
+      
+      const snap = await getDocFromServer(ref);
       if (snap.exists()) {
         const data = snap.data();
         let loadedProfile = data?.profile || {};
+        if (data?.chatHistory) {
+          setLoadedChatHistory(data.chatHistory);
+        }
 
         
         let safeAssets = Array.isArray(loadedProfile.assets) ? loadedProfile.assets : [];
@@ -141,6 +148,8 @@ export function useProfile(user: User | null) {
       } else {
          handleFirestoreError(e, OperationType.GET, `users/${user.uid}`);
       }
+    } finally {
+      setIsLoading(false);
     }
   }, [user]);
 
@@ -166,5 +175,5 @@ export function useProfile(user: User | null) {
     }
   }, [user]);
 
-  return { profile, setProfile, loadProfile, saveProfile };
+  return { profile, setProfile, loadProfile, saveProfile, isLoading, loadedChatHistory };
 }

@@ -14,9 +14,10 @@ import { SIPGrowthSimulator } from './SIPGrowthSimulator';
 
 interface DashboardProps {
   profile: UserProfile;
+  isProfileLoading?: boolean;
 }
 
-export function Dashboard({ profile }: DashboardProps) {
+export function Dashboard({ profile, isProfileLoading }: DashboardProps) {
   const COLORS = ['#22c55e', '#0891b2', '#f59e0b', '#7c3aed', '#6b7280'];
   const [isExporting, setIsExporting] = useState(false);
   const [exportError, setExportError] = useState('');
@@ -54,6 +55,19 @@ export function Dashboard({ profile }: DashboardProps) {
   const nw = profile.metrics.netWorth;
   const surplus = profile.metrics.monthlyCashFlow;
   
+  if (isProfileLoading) {
+    return (
+      <div className="p-8 space-y-8 animate-pulse max-w-6xl mx-auto">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="h-28 bg-gray-200 rounded-[14px]"></div>
+          <div className="h-28 bg-gray-200 rounded-[14px]"></div>
+        </div>
+        <div className="h-64 bg-gray-200 rounded-[14px]"></div>
+        <div className="h-64 bg-gray-200 rounded-[14px]"></div>
+      </div>
+    );
+  }
+
   // Data for Net Worth history if available
   const historyData = (profile.history || []).slice(-6)
     .filter(h => h.metricsSnapshot)
@@ -137,8 +151,8 @@ export function Dashboard({ profile }: DashboardProps) {
               </div>
               <div className="mt-4 text-sm text-gray-600 bg-gray-50 border border-gray-100 rounded-lg p-4 animate-in slide-in-from-bottom-2 fade-in duration-700">
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                   {fhsBreakdown.categories.map((cat, idx) => (
-                     <div key={idx} className="flex flex-col gap-1">
+                   {fhsBreakdown.categories.map((cat) => (
+                     <div key={cat.name} className="flex flex-col gap-1">
                        <div className="flex justify-between text-xs font-semibold">
                          <span>{cat.name}</span>
                          <span className={cat.score >= 80 ? 'text-green-600' : cat.score >= 50 ? 'text-yellow-600' : 'text-red-500'}>{cat.score}/100</span>
@@ -222,7 +236,7 @@ export function Dashboard({ profile }: DashboardProps) {
               const sim = simulateGoal(g, profile);
               const pct = g.target > 0 ? Math.min(100, Math.round((g.saved / g.target) * 100)) : 0;
               return (
-                <div key={i} className="flex flex-col gap-2 p-4 bg-gray-50 rounded-lg border border-gray-100">
+                <div key={g.id || `goal-${g.name}-${i}`} className="flex flex-col gap-2 p-4 bg-gray-50 rounded-lg border border-gray-100">
                   <div className="flex items-center justify-between">
                     <span className="font-semibold text-gray-800 text-sm">{g.name}</span>
                     <span className={`text-[0.65rem] uppercase font-bold tracking-wider px-2 py-1 rounded ${sim.status === 'on-track' || sim.status === 'completed' ? 'bg-green-100 text-green-700' : sim.status === 'aggressive' ? 'bg-orange-100 text-orange-700' : 'bg-red-100 text-red-700'}`}>
@@ -272,7 +286,7 @@ export function Dashboard({ profile }: DashboardProps) {
              <h4 className="text-sm font-semibold text-gray-700 mb-4">Debt Payoff Planner</h4>
              <div className="space-y-3">
              {debtPlan.payoffPriority.map((l, i) => (
-                 <div key={i} className="p-3 bg-red-50 rounded border border-red-100 flex items-center justify-between">
+                 <div key={l.id || `loan-${l.name}-${i}`} className="p-3 bg-red-50 rounded border border-red-100 flex items-center justify-between">
                      <div>
                          <div className="font-semibold text-red-900 text-sm">{l.name}</div>
                          <div className="text-xs text-red-700 mt-0.5">Amount: {fmt(l.amount)} • Rate: {l.rate}% • EMI: {fmt(l.emi || 0)}</div>

@@ -48,6 +48,9 @@ export const parser = {
           if(extracted.personal.name) newProfile.personal.name = extracted.personal.name;
           if(extracted.personal.age) newProfile.personal.age = extracted.personal.age;
           if(extracted.personal.riskProfile) newProfile.personal.riskProfile = extracted.personal.riskProfile;
+          if(Array.isArray(extracted.personal.majorConcerns)) {
+             newProfile.personal.majorConcerns = Array.from(new Set([...(newProfile.personal.majorConcerns || []), ...extracted.personal.majorConcerns]));
+          }
           updates.push("Personal details updated");
       }
 

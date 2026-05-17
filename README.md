@@ -59,6 +59,7 @@ This project has been upgraded to a **production-grade prototype**.
    VITE_FIREBASE_STORAGE_BUCKET=your_firebase_storage_bucket
    VITE_FIREBASE_MESSAGING_SENDER_ID=your_firebase_messaging_sender_id
    VITE_FIREBASE_APP_ID=your_firebase_app_id
+   VITE_FIREBASE_FIRESTORE_DATABASE_ID=ai-studio-a66db8b9-1938-4bee-95e4-ad97e7bdfa8a
    ```
 
 3. **Firebase Setup:**

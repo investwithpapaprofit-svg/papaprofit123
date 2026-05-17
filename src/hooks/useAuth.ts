@@ -22,8 +22,11 @@ export function useAuth() {
         msg = 'Network issue. Check your connection.';
       } else if (e.code === 'auth/too-many-requests') {
         msg = 'Too many attempts. Try again later.';
-      } else if (e.message) {
-        msg = e.message;
+      } else if (e.code === 'auth/popup-blocked') {
+        msg = 'Popup blocked by your browser. Please allow popups for this site.';
+      } else {
+        console.error("Auth error:", e);
+        msg = 'Something went wrong during login. Please try again.';
       }
       setLoginError(msg);
     }

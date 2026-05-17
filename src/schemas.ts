@@ -6,7 +6,7 @@ export const AIParseResponseSchema = z.object({
   clarificationNeeded: z.boolean().optional(),
   clarificationMessage: z.string().optional(),
   extracted_data: z.object({
-    personal: z.object({ name: z.string().optional(), age: z.number().optional(), riskProfile: z.enum(['conservative', 'moderate', 'aggressive']).optional() }).optional(),
+    personal: z.object({ name: z.string().optional(), age: z.number().optional(), riskProfile: z.enum(['conservative', 'moderate', 'aggressive']).optional(), majorConcerns: z.array(z.string()).optional() }).optional(),
     incomeSources: z.array(z.object({ name: z.string(), value: z.number() })).optional(),
     expenses: z.array(z.object({ name: z.string(), value: z.number(), category: z.string().optional() })).optional(),
     subscriptions: z.array(z.object({ name: z.string(), cost: z.number(), billingCycle: z.enum(['monthly', 'yearly']).optional() })).optional(),

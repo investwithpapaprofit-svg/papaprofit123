@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Trash2 } from 'lucide-react';
 
 export interface FinancialSourceItem {
+  id?: string;
   name: string;
   value: number;
 }
@@ -23,7 +24,7 @@ export function FinancialSourceEditor({ title, sources, onUpdate, type }: Financ
     const val = parseFloat(newValue);
     if (isNaN(val) || val <= 0) return;
 
-    const newSources = [...sources, { name: newName, value: val }];
+    const newSources = [...sources, { id: crypto.randomUUID(), name: newName, value: val }];
     onUpdate(newSources);
     setNewName('');
     setNewValue('');
@@ -51,7 +52,7 @@ export function FinancialSourceEditor({ title, sources, onUpdate, type }: Financ
 
       <div>
         {sources.map((source, i) => (
-          <div key={i} className="profile-row group">
+          <div key={source.id || i} className="profile-row group">
             <span className="key">{source.name}</span>
             <div className="flex items-center gap-3">
               <span className="val">{fmt(source.value)}</span>

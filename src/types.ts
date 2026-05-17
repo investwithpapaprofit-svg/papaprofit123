@@ -91,6 +91,7 @@ export interface UserProfile {
     name?: string;
     age?: number;
     riskProfile?: 'conservative' | 'moderate' | 'aggressive';
+    majorConcerns?: string[];
   };
   income: IncomeSource[];
   expenses: Expense[];

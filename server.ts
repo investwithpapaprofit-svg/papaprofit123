@@ -11,7 +11,6 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import Stripe from 'stripe';
-import { ONBOARDING_QUESTIONS } from './src/constants.js';
 import { finance } from './src/finance.js';
 import { AIParseResponseSchema } from './src/schemas.js';
 import { getNextBestAction } from './src/utils/nextBestAction.js';
@@ -39,8 +38,8 @@ console.log('APP_URL:', appUrl);
 let firestore: any;
 
 try {
-  const projectId = process.env.FIREBASE_PROJECT_ID || 'papaprofit-7aa7e';
-  const dbId = process.env.FIREBASE_DATABASE_ID || '(default)';
+  const projectId = process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID || 'papaprofit-7aa7e';
+  const dbId = process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || '(default)';
   const adminApp = admin.initializeApp({ projectId });
   firestore = getFirestore(adminApp, dbId);
   console.log(`✅ Firebase Admin initialized. Project: ${projectId}, DB: ${dbId}`);
@@ -117,6 +116,15 @@ async function startServer() {
   const userAiUsageMap = new Map<string, { count: number, resetAt: number }>();
   const USER_AI_LIMIT_MAX = 50;
   const USER_AI_LIMIT_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
+
+  setInterval(() => {
+    const now = Date.now();
+    for (const [uid, usage] of userAiUsageMap.entries()) {
+      if (now > usage.resetAt) {
+        userAiUsageMap.delete(uid);
+      }
+    }
+  }, 5 * 60 * 1000);
 
   const perUserAiLimiter = (req: express.Request, res: express.Response, next: express.NextFunction) => {
     const uid = (req as any).user?.uid;
@@ -278,7 +286,7 @@ async function startServer() {
 
   const parseSchema = z.object({
     msg: z.string().max(2000),
-    chatHistory: z.array(z.object({ role: z.string(), content: z.string() })).max(10).optional()
+    chatHistory: z.array(z.object({ role: z.string(), content: z.string() })).max(20).optional()
   });
 
   app.post('/api/ai/parse', requireAuth, aiLimiter, perUserAiLimiter, async (req, res) => {
@@ -296,7 +304,7 @@ async function startServer() {
         messages: [
           {
             role: 'system',
-            content: `You are a financial data extraction engine. Extract financial entities from the user message and return ONLY a valid JSON object with these fields: intent (string), confidenceScore (number 0-1), clarificationNeeded (boolean), clarificationMessage (string), extracted_data (object containing any of: personal, incomeSources, expenses, subscriptions, loans, assets, portfolio, goals). Use the assistant's previous message as context to interpret short replies like "80k" or "yes". No markdown, no explanation, just JSON.
+            content: `You are a financial data extraction engine. Extract financial entities and user concerns from the user message. Return ONLY a valid JSON object with these fields: intent (string), confidenceScore (number 0-1), clarificationNeeded (boolean), clarificationMessage (string), extracted_data (object containing any of: personal, incomeSources, expenses, subscriptions, loans, assets, portfolio, goals). Inside 'personal', you can include an array of strings 'majorConcerns' if the user expresses worries (e.g. ["High debt", "No emergency savings"]). Use the assistant's previous message as context to interpret replies. No markdown, no explanation, just JSON.
 Example output format: {"intent":"general","confidenceScore":0.9,"clarificationNeeded":false,"clarificationMessage":"","extracted_data":{}}`
           },
           ...(previousAssistantMsg ? [{ role: 'assistant' as const, content: previousAssistantMsg }] : []),
@@ -331,7 +339,7 @@ Example output format: {"intent":"general","confidenceScore":0.9,"clarificationN
   const respondSchema = z.object({
     userMsg: z.string().max(2000).optional(),
     parsedData: z.any(),
-    chatHistory: z.array(z.object({ role: z.string(), content: z.string() })).max(10),
+    chatHistory: z.array(z.object({ role: z.string(), content: z.string() })).max(20),
     onboardingStep: z.number().min(0).max(8).optional()
   });
 
@@ -342,7 +350,7 @@ Example output format: {"intent":"general","confidenceScore":0.9,"clarificationN
       return res.status(500).json({ error: 'Groq API key not configured' });
     }
     try {
-      const { parsedData, chatHistory, onboardingStep } = respondSchema.parse(req.body);
+      const { parsedData, chatHistory } = respondSchema.parse(req.body);
       
       const uid = (req as any).user.uid;
       let profile: any = {};
@@ -354,7 +362,7 @@ Example output format: {"intent":"general","confidenceScore":0.9,"clarificationN
       }
       const fmt = (n: number) => `₹${(n||0).toLocaleString('en-IN')}`;
 
-      let formattedMessages: Array<{ role: 'user' | 'assistant'; content: string }> = chatHistory.slice(-6).map((h: { role: string; content: string }) => ({
+      let formattedMessages: Array<{ role: 'user' | 'assistant'; content: string }> = chatHistory.slice(-12).map((h: { role: string; content: string }) => ({
         role: h.role === 'user' ? 'user' : 'assistant',
         content: h.content
       }));
@@ -362,48 +370,53 @@ Example output format: {"intent":"general","confidenceScore":0.9,"clarificationN
         formattedMessages.shift();
       }
 
-      const onboardingCtx = onboardingStep !== undefined && onboardingStep >= 0 && onboardingStep < ONBOARDING_QUESTIONS.length
-        ? `\nONBOARDING STATUS: The user is currently in a guided setup at step ${onboardingStep}. The current question being evaluated is: "${ONBOARDING_QUESTIONS[onboardingStep]}". DO NOT give a full financial plan yet. Prioritize: 1. expenses, 2. loans, 3. savings, 4. investments, 5. goals. If data is missing, casually ask for it step-by-step.`
-        : "";
+      const systemCtx = `You are PapaProfit AI — a highly competent, elite AI financial planner for Indian users.
 
-      const systemCtx = `You are PapaProfit AI — an elite AI financial strategist for Indian users.
+Your goal is to provide sharp, contextual, financially analytical, and actionable advice to your client. You MUST act like a highly disciplined human advisor.
 
-You behave like a ₹50,000/month financial advisor:
-- deeply analytical
-- strategic
-- asks incisive follow-up questions
-- understands Indian financial instruments (SIP, EMI, EPF, Gold, FDs)
+CRITICAL BEHAVIOR RULES (ADHERE STRICTLY):
+1. ASK QUESTIONS FIRST (FOLLOW-UP CHAINING): Do NOT give generic advice if data is missing. If the user asks for help or says they are struggling financially, YOU MUST politely ask for specific numbers (e.g., income, biggest expense, debt) BEFORE recommending solutions. Ask ONLY 1 question at a time.
+2. FINANCIAL REASONING ENGINE: Calculate cash flow, debt burden, and savings rate mentally. Detect risky behavior automatically (negative cash flow, high EMI stress, no emergency buffer, high-interest debt) and challenge bad decisions respectfully but firmly. Explain the "WHY" behind financial mechanics.
+3. CHALLENGE RISKY DECISIONS: If the user wants to invest in equity but has 0 emergency fund and high credit card debt, explicitly state that stabilizing high-interest liabilities and safety nets comes first.
+4. STOP GENERIC MOTIVATIONAL FLUFF: Never use phrases like "You're doing great!", "Keep it up!", "Financial freedom is possible!", "That's awesome!". Use concise observations, direct calculations, tradeoffs, and next actions.
+5. CONCISE, STRUCTURED FORMAT: Use short paragraphs and bullet points. Avoid massive walls of text. Make advice extremely scan-friendly.
+   Every full analysis MUST loosely follow this format:
+   - Observation: Fact-based takeaway.
+   - Implication/Risk: What it means for them logically.
+   - Recommendation/Question: The actionable next step or the next critical question you need answered.
+6. INDIAN CONTEXT: Understand SIP, EMI, FD, PPF, ELSS, HRA, EPF, mutual funds, 80C, lakh/crore naming, and Indian taxation rules. Use ₹ symbol.
+7. WHAT-IF ANALYSIS: Support hypothetical reasoning. If they ask "What if I invest 10k more?", estimate the long-term impact realistically.
+8. TRUST & REALISM: ONLY give realistic estimates. Never guarantee returns. If data is completely missing, explicitly state you need it to model a precise plan. NEVER invent numbers. Do not pretend certainty.
+9. MEMORY & CONTINUITY: Rely heavily on the CLIENT PROFILE section below. It contains their latest extracted data. Do NOT re-ask questions if the number is already present in their profile.
 
-CRITICAL RULES FOR FOLLOW-UPS:
-If the user provides an update but critical details are missing, YOU MUST ASK ONE FOCUSED QUESTION FIRST.
-- Example 1 (Bad): "Added ₹15k EMI."
-- Example 1 (Elite): "I've added the ₹15k EMI. Is this for a home, car, or personal loan? The interest rate drastically changes our repayment strategy."
-- Example 2 (Bad): "Salary updated."
-- Example 2 (Elite): "Got it. Is ₹80k your in-hand monthly salary, or your pre-tax CTC?"
-- Example 3 (Elite): "You want to buy a house in 5 years. Do you plan to use any EPF withdrawals for the down payment?"
+WHEN YOU LACK DATA, PRIORITIZE QUESTIONS IN THIS ORDER (Ask 1 max at a time):
+1. Monthly Income (In-hand)
+2. Monthly Expenses
+3. Debt / EMIs
+4. Emergency Fund Status
+5. Core Financial Goals
+6. Current Investments
 
-BEHAVIORAL INVARIANTS:
-1. Never interrogate (max 1 question at a time).
-2. Explain *why* you are asking (e.g. "Because personal loans have 14%+ interest...").
-3. NEVER use robotic filler words like "Noted", "Updated", or "Added".
-4. If the user asks for advice but their profile is mostly empty, tell them you need more data (liabilities, savings rate) to give a *fiscally responsible* answer.
-${onboardingCtx}
-
-CLIENT PROFILE:
+CLIENT PROFILE OVERVIEW (Always reference these numbers first):
 Name: ${profile.personal?.name || 'Unknown'}
 Age: ${profile.personal?.age || 'Unknown'}
+Major Concerns: ${(profile.personal?.majorConcerns || []).join(', ') || 'None identified yet'}
 
-METRICS:
-Monthly Income: ${fmt(finance.totalIncome(profile))}
-Monthly Expenses: ${fmt(finance.totalExpenses(profile))}
-EMI: ${fmt(finance.totalEMI(profile))}
-Total Loans: ${fmt(finance.totalLiabilities(profile))}
-Total Assets: ${fmt(finance.totalAssets(profile))}
+TOTAL REPORTED METRICS (Mental Model):
+- Monthly Income: ${fmt(finance.totalIncome(profile))}
+- Monthly Expenses: ${fmt(finance.totalExpenses(profile))}
+- Monthly Surplus/Cash Flow: ${fmt(profile.metrics?.monthlyCashFlow || 0)}
+- Total Assets: ${fmt(finance.totalAssets(profile))}
+- Total Loans/Liabilities: ${fmt(finance.totalLiabilities(profile))}
+- Active Goals: ${(profile.goals || []).map((g: any) => g.name).join(', ') || 'None detailed'}
+- Debt Accounts: ${(profile.loans || []).map((l: any) => l.name).join(', ') || 'None detailed'}
 
-CURRENT COPILOT ANALYSIS:
-- Extracted: ${parsedData?.updates?.length > 0 ? parsedData.updates.join(', ') : 'No new hard data found.'}
-- Parsing Intent: ${parsedData?.intent || 'general'}
-- Recommended Action: ${getNextBestAction(profile).title || 'Complete profile'}`;
+CONTEXT FROM BACKEND: 
+- Just extracted data: ${parsedData?.updates?.length > 0 ? parsedData.updates.join(', ') : 'None'}
+- Parsing intent: ${parsedData?.intent || 'general'}
+- Recommended Action by Backend Engine: ${getNextBestAction(profile).title || 'Complete profile'}
+
+Respond to the user with discipline, clarity, and precision. Do not apologize endlessly. Do not use filler intro text.`;
 
       const completion = await groq.chat.completions.create({
         model: MODEL,

@@ -9,9 +9,10 @@ interface SidebarProps {
   setShowPremiumModal: (s: boolean) => void;
   isOpen?: boolean;
   onClose?: () => void;
+  isProfileLoading?: boolean;
 }
 
-export function Sidebar({ profile, setShowPremiumModal, isOpen, onClose }: SidebarProps) {
+export function Sidebar({ profile, setShowPremiumModal, isOpen, onClose, isProfileLoading }: SidebarProps) {
   const fhsScore = profile.metrics.financialHealthScore;
   const fhsInfo = finance.fhsLabel(fhsScore);
   const nw = profile.metrics.netWorth;
@@ -48,8 +49,26 @@ export function Sidebar({ profile, setShowPremiumModal, isOpen, onClose }: Sideb
              <button onClick={onClose} className="text-gray-500">✕</button>
            </h3>
         )}
-        <div className="sidebar-section">
-          <div className="sidebar-title">Financial Health Score</div>
+        
+        {isProfileLoading ? (
+           <div className="p-6 space-y-8 animate-pulse">
+             <div className="flex flex-col items-center gap-4">
+               <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+               <div className="w-[120px] h-[120px] rounded-full border-[10px] border-gray-100"></div>
+             </div>
+             <div className="space-y-4">
+               {[1,2,3].map(i => (
+                 <div key={i} className="flex flex-col gap-2">
+                   <div className="h-3 bg-gray-200 rounded w-1/3"></div>
+                   <div className="h-4 bg-gray-300 rounded w-1/2"></div>
+                 </div>
+               ))}
+             </div>
+           </div>
+        ) : (
+          <div className="flex flex-col flex-1 overflow-y-auto">
+            <div className="sidebar-section">
+              <div className="sidebar-title">Financial Health Score</div>
           <div className="fhs-circle-wrap group">
             <div className="fhs-circle">
             <svg width="120" height="120" viewBox="0 0 120 120" className="overflow-visible block">
@@ -99,7 +118,7 @@ export function Sidebar({ profile, setShowPremiumModal, isOpen, onClose }: Sideb
             {(profile.goals || []).map((g, i) => {
               const pct = g.target > 0 ? Math.round((g.saved / g.target) * 100) : 0;
               return (
-                <div key={i} className="goal-card">
+                <div key={g.id || `goal-${g.name}-${i}`} className="goal-card">
                   <div className="goal-card-top"><span className="goal-name">{g.name}</span><span className="text-[0.65rem] font-bold text-mid">{pct}%</span></div>
                   <div className="goal-progress"><div className="goal-progress-fill" style={{ width: `${pct}%` }}></div></div>
                   <div className="goal-detail">{fmt(g.saved)} saved · {fmt(g.target)} target</div>
@@ -123,7 +142,7 @@ export function Sidebar({ profile, setShowPremiumModal, isOpen, onClose }: Sideb
               <div className="sidebar-title">Smart Alerts</div>
               <div className="flex flex-col gap-2">
                  {smartAlerts.slice(0, 2).map((a, i) => (
-                    <div key={i} className={`rounded-lg p-3 text-sm border ${a.severity === 'high' ? 'bg-red-50 border-red-100 text-red-800' : 'bg-orange-50 border-orange-100 text-orange-800'}`}>
+                    <div key={`alert-${i}`} className={`rounded-lg p-3 text-sm border ${a.severity === 'high' ? 'bg-red-50 border-red-100 text-red-800' : 'bg-orange-50 border-orange-100 text-orange-800'}`}>
                         <div className="font-semibold mb-1">⚠️ {a.explanation}</div>
                         <div className="text-xs opacity-90">{a.action}</div>
                     </div>
@@ -149,15 +168,17 @@ export function Sidebar({ profile, setShowPremiumModal, isOpen, onClose }: Sideb
         <div className="sidebar-section pt-0 border-0">
           <div className="sidebar-title">AI Insights</div>
           <div>
-            {(profile.insights || []).map((n, i) => <div key={i} className="nudge"><span className="nudge-icon font-emoji">💡</span> <span>{n.title}</span></div>)}
+            {(profile.insights || []).map((n, i) => <div key={`insight-${i}`} className="nudge"><span className="nudge-icon font-emoji">💡</span> <span>{n.title}</span></div>)}
           </div>
         </div>
       )}
 
-      <div className="premium-lock">
+      <div className="premium-lock mt-auto border-t">
         <p>🔒 Unlock tax AI, unlimited advisor & portfolio X-ray</p>
         <button className="premium-btn text-center flex items-center justify-center gap-2" onClick={() => setShowPremiumModal(true)}>⚡ Go Pro — ₹499/mo</button>
       </div>
+          </div>
+        )}
     </div>
     </>
   );
