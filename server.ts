@@ -199,71 +199,127 @@ async function startServer() {
   });
 
   app.post('/api/cron/weekly-digest', async (req, res) => {
+    if (!process.env.CRON_SECRET) {
+      return res.status(503).json({ error: 'CRON_SECRET not configured on server' });
+    }
     const authHeader = req.headers.authorization;
-    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
       return res.status(401).send('Unauthorized');
     }
 
     if (!firestore) return res.status(503).json({ error: 'Database unavailable' });
 
     try {
-      const resend = new Resend(process.env.RESEND_API_KEY || 'fake');
-      const usersSnap = await firestore.collection('users').get();
+      const resendApiKey = process.env.RESEND_API_KEY;
+      if (!resendApiKey) {
+         console.warn('RESEND_API_KEY missing, skipping actual sends');
+      }
+      const resend = new Resend(resendApiKey || 'fake');
       let sentCount = 0;
+      let lastDoc = null;
+      const BATCH_SIZE = 100;
+      let hasMore = true;
 
-      for (const doc of usersSnap.docs) {
-        const userData = doc.data();
-        const email = userData.email || (userData.profile?.personal?.email);
-        if (!userData.profile || !email) continue;
-        const profile = userData.profile;
-
-        const report = generateWeeklyReport(profile);
-        if (!report.isAvailable) continue;
-
-        const html = `
-          <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #1e293b; line-height: 1.6;">
-            <div style="text-align: center; margin-bottom: 24px;">
-              <h2 style="color: #1a7a4a; margin-bottom: 0;">Your PapaProfit Weekly Money Report 📈</h2>
-              <p style="color: #64748b; font-size: 14px; margin-top: 4px;">Consistent small wins build wealth.</p>
-            </div>
-            <p>Hi ${profile.personal?.name?.split(' ')[0] || 'there'}, here's your personalized financial summary for the week.</p>
-            <div style="background: #f4f6f4; padding: 24px; border-radius: 16px; margin: 24px 0; border: 1px solid #d1e8d7;">
-              <table style="width: 100%; text-align: left; border-collapse: collapse;">
-                <tr style="border-bottom: 1px solid rgba(0,0,0,0.05);">
-                  <td style="padding: 12px 0; color: #475569; font-size: 14px;">Net Worth Change</td>
-                  <td style="padding: 12px 0; font-weight: 800; text-align: right; color: #0f172a;">${report.netWorthChange}</td>
-                </tr>
-                <tr style="border-bottom: 1px solid rgba(0,0,0,0.05);">
-                  <td style="padding: 12px 0; color: #475569; font-size: 14px;">Savings Rate Change</td>
-                  <td style="padding: 12px 0; font-weight: 800; text-align: right; color: #0f172a;">${report.savingsRateChange}</td>
-                </tr>
-                <tr>
-                  <td style="padding: 12px 0; color: #475569; font-size: 14px;">Debt vs Income Change</td>
-                  <td style="padding: 12px 0; font-weight: 800; text-align: right; color: #0f172a;">${report.debtChange}</td>
-                </tr>
-              </table>
-            </div>
-            <p style="margin-bottom: 8px;"><strong>🔥 Biggest Win:</strong> <span style="color: #0f172a;">${report.topImprovement}</span></p>
-            <p><strong>💡 Next Best Action:</strong> <span style="color: #0f172a;">${report.recommendedNextStep}</span></p>
-            <p style="margin-top: 40px; font-size: 12px; color: #94a3b8; text-align: center;">Keep building wealth steadily.<br> PapaProfit Team</p>
-          </div>
-        `;
-
-        if (process.env.RESEND_API_KEY) {
-          await resend.emails.send({
-            from: 'reports@papaprofit.com',
-            to: email,
-            subject: 'Your PapaProfit Weekly Money Report 📈',
-            html
-          });
+      while (hasMore) {
+        let query = firestore.collection('users').limit(BATCH_SIZE);
+        if (lastDoc) {
+          query = query.startAfter(lastDoc);
         }
-        sentCount++;
+        
+        const usersSnap = await query.get();
+        if (usersSnap.empty) {
+          hasMore = false;
+          break;
+        }
+
+        lastDoc = usersSnap.docs[usersSnap.docs.length - 1];
+
+        for (const doc of usersSnap.docs) {
+          const userData = doc.data();
+          const email = userData.email || (userData.profile?.personal?.email);
+          const profile = userData.profile;
+          
+          if (!profile || !email) continue;
+          if (profile.preferences?.emailDigest === false) continue; // Unsubscribed
+
+          const report = generateWeeklyReport(profile);
+          if (!report.isAvailable) continue;
+
+          const unsubToken = Buffer.from(doc.id).toString('base64');
+          const unsubUrl = `https://papaprofit.com/api/unsubscribe?token=${unsubToken}`; // Replace with actual domain in prod
+
+          const html = `
+            <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #1e293b; line-height: 1.6;">
+              <div style="text-align: center; margin-bottom: 24px;">
+                <h2 style="color: #1a7a4a; margin-bottom: 0;">Your PapaProfit Weekly Money Report 📈</h2>
+                <p style="color: #64748b; font-size: 14px; margin-top: 4px;">Consistent small wins build wealth.</p>
+              </div>
+              <p>Hi ${profile.personal?.name?.split(' ')[0] || 'there'}, here's your personalized financial summary for the week.</p>
+              <div style="background: #f4f6f4; padding: 24px; border-radius: 16px; margin: 24px 0; border: 1px solid #d1e8d7;">
+                <table style="width: 100%; text-align: left; border-collapse: collapse;">
+                  <tr style="border-bottom: 1px solid rgba(0,0,0,0.05);">
+                    <td style="padding: 12px 0; color: #475569; font-size: 14px;">Net Worth Change</td>
+                    <td style="padding: 12px 0; font-weight: 800; text-align: right; color: #0f172a;">${report.netWorthChange}</td>
+                  </tr>
+                  <tr style="border-bottom: 1px solid rgba(0,0,0,0.05);">
+                    <td style="padding: 12px 0; color: #475569; font-size: 14px;">Savings Rate Change</td>
+                    <td style="padding: 12px 0; font-weight: 800; text-align: right; color: #0f172a;">${report.savingsRateChange}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 12px 0; color: #475569; font-size: 14px;">Debt vs Income Change</td>
+                    <td style="padding: 12px 0; font-weight: 800; text-align: right; color: #0f172a;">${report.debtChange}</td>
+                  </tr>
+                </table>
+              </div>
+              <p style="margin-bottom: 8px;"><strong>🔥 Biggest Win:</strong> <span style="color: #0f172a;">${report.topImprovement}</span></p>
+              <p><strong>💡 Next Best Action:</strong> <span style="color: #0f172a;">${report.recommendedNextStep}</span></p>
+              <p style="margin-top: 40px; font-size: 12px; color: #94a3b8; text-align: center;">
+                Keep building wealth steadily.<br> PapaProfit Team<br><br>
+                <a href="${unsubUrl}" style="color: #64748b; text-decoration: underline;">Unsubscribe from weekly reports</a>
+              </p>
+            </div>
+          `;
+
+          if (resendApiKey) {
+            try {
+              await resend.emails.send({
+                from: process.env.VERIFIED_SENDER_EMAIL || 'PapaProfit <update@papaprofit.com>',
+                to: email,
+                subject: `Your Weekly Money Status: ${report.netWorthChange}`,
+                html
+              });
+              sentCount++;
+            } catch (err: any) {
+              console.error(`Error sending email to ${email}:`, err.message);
+            }
+          }
+        }
       }
 
-      res.json({ success: true, sentCount });
-    } catch (e: any) {
-      console.error('Digest error:', e);
-      res.status(500).json({ error: e.message });
+      res.json({ success: true, count: sentCount, message: 'Batch processed successfully' });
+    } catch (err: any) {
+      console.error('Digest error:', err.message);
+      res.status(500).json({ error: 'Failed' });
+    }
+  });
+
+  app.get('/api/unsubscribe', async (req, res) => {
+    if (!firestore) return res.status(503).json({ error: 'Database unavailable' });
+    try {
+      const token = req.query.token as string;
+      if (!token) return res.status(400).send('Missing token');
+      const uid = Buffer.from(token, 'base64').toString('utf8');
+      
+      const userRef = firestore.collection('users').doc(uid);
+      const docSnap = await userRef.get();
+      if (docSnap.exists) {
+        await userRef.set({ profile: { preferences: { emailDigest: false } } }, { merge: true });
+        res.send('Successfully unsubscribed from weekly reports. You can change this in your profile settings.');
+      } else {
+        res.status(404).send('User not found.');
+      }
+    } catch (err) {
+      res.status(500).send('Internal server error.');
     }
   });
 
@@ -442,22 +498,23 @@ Example output format: {"intent":"general","confidenceScore":0.9,"clarificationN
 
       const systemCtx = `You are PapaProfit AI — a highly competent, elite AI financial planner for Indian users.
 
-Your goal is to provide sharp, contextual, financially analytical, and actionable advice to your client. You MUST act like a highly disciplined human advisor.
+Your goal is to provide sharp, contextual, financially analytical, and actionable advice to your client. You MUST act like a highly disciplined human advisor (like a CFP, CA, or behavioral economist).
 
 CRITICAL BEHAVIOR RULES (ADHERE STRICTLY):
 1. ASK QUESTIONS FIRST (FOLLOW-UP CHAINING): Do NOT give generic advice if data is missing. If the user asks for help or says they are struggling financially, YOU MUST politely ask for specific numbers (e.g., income, biggest expense, debt) BEFORE recommending solutions. Ask ONLY 1 question at a time.
 2. FINANCIAL REASONING ENGINE: Calculate cash flow, debt burden, and savings rate mentally. Detect risky behavior automatically (negative cash flow, high EMI stress, no emergency buffer, high-interest debt) and challenge bad decisions respectfully but firmly. Explain the "WHY" behind financial mechanics.
-3. CHALLENGE RISKY DECISIONS: If the user wants to invest in equity but has 0 emergency fund and high credit card debt, explicitly state that stabilizing high-interest liabilities and safety nets comes first.
+3. CHALLENGE RISKY DECISIONS: If the user wants to invest in equity but has 0 emergency fund and high credit card debt, explicitly state that stabilizing high-interest liabilities and safety nets comes first. Identify cash flow leaks and debt risks immediately.
 4. STOP GENERIC MOTIVATIONAL FLUFF: Never use phrases like "You're doing great!", "Keep it up!", "Financial freedom is possible!", "That's awesome!". Use concise observations, direct calculations, tradeoffs, and next actions.
 5. CONCISE, STRUCTURED FORMAT: Use short paragraphs and bullet points. Avoid massive walls of text. Make advice extremely scan-friendly.
    Every full analysis MUST loosely follow this format:
    - Observation: Fact-based takeaway.
    - Implication/Risk: What it means for them logically.
    - Recommendation/Question: The actionable next step or the next critical question you need answered.
-6. INDIAN CONTEXT: Understand SIP, EMI, FD, PPF, ELSS, HRA, EPF, mutual funds, 80C, lakh/crore naming, and Indian taxation rules. Use ₹ symbol.
-7. WHAT-IF ANALYSIS: Support hypothetical reasoning. If they ask "What if I invest 10k more?", estimate the long-term impact realistically.
+6. INDIAN CONTEXT: Understand SIP, EMI, FD, PPF, ELSS, HRA, EPF, mutual funds, 80C, new regime vs old regime tax slabs (FY25-26), lakh/crore naming, and Indian taxation rules. Use ₹ symbol.
+7. WHAT-IF ANALYSIS: Support hypothetical reasoning. If they ask "What if I invest 10k more?", estimate the long-term impact realistically using standard compounded returns (e.g., 10-12% for equity). If they ask about paying extra EMI, calculate the time saved.
 8. TRUST & REALISM: ONLY give realistic estimates. Never guarantee returns. If data is completely missing, explicitly state you need it to model a precise plan. NEVER invent numbers. Do not pretend certainty.
-9. MEMORY & CONTINUITY: Rely heavily on the CLIENT PROFILE section below. It contains their latest extracted data. Do NOT re-ask questions if the number is already present in their profile.
+9. MEMORY & CONTINUITY: Rely heavily on the CLIENT PROFILE section below. It contains their latest extracted data and insights. Do NOT re-ask questions if the number is already present in their profile.
+10. PROACTIVE FOLLOW-UPS: Always end your response with a contextual follow-up question. "Do you want help reducing these expenses?", "Want a SIP plan for this goal?", "Should I calculate how long your emergency fund lasts?", "Want a tax optimization estimate?".
 
 WHEN YOU LACK DATA, PRIORITIZE QUESTIONS IN THIS ORDER (Ask 1 max at a time):
 1. Monthly Income (In-hand)
@@ -480,6 +537,12 @@ TOTAL REPORTED METRICS (Mental Model):
 - Total Loans/Liabilities: ${fmt(finance.totalLiabilities(profile))}
 - Active Goals: ${(profile.goals || []).map((g: any) => g.name).join(', ') || 'None detailed'}
 - Debt Accounts: ${(profile.loans || []).map((l: any) => l.name).join(', ') || 'None detailed'}
+- Savings Rate: ${(profile.metrics?.savingsRate || 0).toFixed(1)}%
+- Emergency Fund Runway: ${(profile.metrics?.emergencyFundRunwayMonths || 0).toFixed(1)} months
+- Financial Health Score: ${profile.metrics?.financialHealthScore || 0}/100
+
+AI MEMORY / INSIGHTS:
+- Prior recommendations & insights generated so far: ${(profile.insights || []).map((i: any) => i.title).join(', ') || 'None yet'}
 
 CONTEXT FROM BACKEND: 
 - Just extracted data: ${parsedData?.updates?.length > 0 ? parsedData.updates.join(', ') : 'None'}
@@ -488,7 +551,7 @@ CONTEXT FROM BACKEND:
 
 ${profile?.preferences?.language === 'hi' ? 'CRITICAL: You MUST respond purely in Hindi (हिंदी), maintaining the elite financial advisor persona. Translate all your insights, tone, and financial advice exactly. DO NOT use English unless for standard financial terms (like SIP, EMI) if commonly understood.' : 'Respond in English.'}
 
-Respond to the user with discipline, clarity, and precision. Do not apologize endlessly. Do not use filler intro text.`;
+Respond to the user with discipline, clarity, precision, and a calm, trustworthy demeanor. Do not apologize endlessly. Do not use filler intro text.`;
 
       const completion = await groq.chat.completions.create({
         model: MODEL,
