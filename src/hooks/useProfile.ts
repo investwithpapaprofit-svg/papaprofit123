@@ -142,7 +142,11 @@ export function useProfile(user: User | null) {
           ? safeProfile.history[safeProfile.history.length - 1].month 
           : null;
 
-        if (lastSnapshotMonth !== currentMonth) {
+        if (
+          lastSnapshotMonth !== currentMonth &&
+          safeProfile.onboardingCompleted &&
+          finance.totalIncome(safeProfile) > 0
+        ) {
           safeProfile.history = safeProfile.history || [];
           safeProfile.history.push({
             month: currentMonth,
@@ -155,8 +159,8 @@ export function useProfile(user: User | null) {
             }
           });
           // Optimistically save the new history (fire and forget to not block load)
-          import('firebase/firestore').then(({ setDoc }) => {
-            setDoc(ref, { profile: { history: safeProfile.history } }, { merge: true }).catch(() => {});
+          import('firebase/firestore').then(({ updateDoc }) => {
+            updateDoc(ref, { 'profile.history': safeProfile.history }).catch(() => {});
           });
         }
 

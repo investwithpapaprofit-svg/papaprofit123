@@ -1,4 +1,5 @@
 import { getNextBestAction } from './nextBestAction';
+import { finance } from '../finance';
 
 export interface WeeklyReport {
   netWorthChange: string;
@@ -27,7 +28,7 @@ export function generateWeeklyReport(profile: import('../types').UserProfile): W
 
   result.isAvailable = true;
 
-  const first = snapshots[0].metricsSnapshot as any;
+  const first = snapshots[snapshots.length - 2].metricsSnapshot as any;
   const last = profile.metrics;
 
   if (!first || !last) return result;
@@ -44,10 +45,13 @@ export function generateWeeklyReport(profile: import('../types').UserProfile): W
   const debtDiff = lastDebtRatio - (first.debtToIncome || 0);
   result.debtChange = `${debtDiff >= 0 ? '+' : ''}${debtDiff.toFixed(1)}% vs Income`;
 
+  const totalIncome = finance.totalIncome(profile);
+  const totalExpenses = finance.totalExpenses(profile);
+
   const subExpenses = (profile.subscriptions || []).reduce((s, sub) => s + (sub.billingCycle === 'yearly' ? sub.cost / 12 : sub.cost), 0);
-  if (subExpenses > (last.totalIncome || 0) * 0.05) {
+  if (subExpenses > totalIncome * 0.05) {
     result.biggestExpenseIssue = 'High subscription spending';
-  } else if ((last.totalExpenses || 0) > (last.totalIncome || 0) * 0.7) {
+  } else if (totalExpenses > totalIncome * 0.7) {
     result.biggestExpenseIssue = 'Overall expenses are very high';
   } else {
     result.biggestExpenseIssue = 'Expenses look healthy';

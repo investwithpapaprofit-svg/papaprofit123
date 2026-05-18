@@ -12,6 +12,9 @@ import { generateWeeklyReport } from '../utils/weeklyReport';
 import { SubscriptionLeakDetector } from './SubscriptionLeakDetector';
 import { EmergencyFundPlanner } from './EmergencyFundPlanner';
 import { SIPGrowthSimulator } from './SIPGrowthSimulator';
+import { TaxHelper } from './TaxHelper';
+import { SavingsPercentile } from './SavingsPercentile';
+import { MilestoneCelebration } from './MilestoneCelebration';
 
 interface DashboardProps {
   profile: UserProfile;
@@ -197,6 +200,10 @@ export function Dashboard({ profile, isProfileLoading }: DashboardProps) {
           </div>
         </div>
       </div>
+      
+      <MilestoneCelebration profile={profile} />
+
+      <SavingsPercentile profile={profile} />
 
       <div className="mt-4 border-t-[1.5px] border-faint pt-6">
           <h4 className="text-[0.62rem] font-bold tracking-[0.1em] uppercase text-ghost mb-4">Financial Health Score</h4>
@@ -418,6 +425,9 @@ export function Dashboard({ profile, isProfileLoading }: DashboardProps) {
             <EmergencyFundPlanner profile={profile} />
             <div className="col-span-1 lg:col-span-2">
                 <SIPGrowthSimulator />
+            </div>
+            <div className="col-span-1 lg:col-span-2">
+                <TaxHelper />
             </div>
          </div>
       </div>

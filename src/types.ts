@@ -84,6 +84,7 @@ export interface Asset {
 
 export interface UserPreferences {
   currency: string;
+  language?: 'en' | 'hi';
 }
 
 export interface UserProfile {

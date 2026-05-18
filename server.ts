@@ -10,6 +10,8 @@ import { getFirestore } from 'firebase-admin/firestore';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
+import { Resend } from 'resend';
+import { generateWeeklyReport } from './src/utils/weeklyReport';
 import Stripe from 'stripe';
 import { finance } from './src/finance.js';
 import { AIParseResponseSchema } from './src/schemas.js';
@@ -91,7 +93,7 @@ async function startServer() {
         styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
         imgSrc: ["'self'", "data:", "blob:", "https://*.google.com", "https://*.googleusercontent.com"],
         fontSrc: ["'self'", "https://fonts.gstatic.com"],
-        connectSrc: ["'self'", "https://*.googleapis.com", "https://*.firebaseio.com", "wss://*.firebaseio.com"],
+        connectSrc: ["'self'", "https://*.googleapis.com", "https://*.firebaseio.com", "wss://*.firebaseio.com", "https://identitytoolkit.googleapis.com", "https://securetoken.googleapis.com"],
         frameSrc: ["'self'", "https://*.firebaseapp.com", "https://accounts.google.com"],
         frameAncestors: ["'self'", "https://*.run.app", "https://*.google.com", "https://*.aistudio.google.com"],
       }
@@ -194,6 +196,75 @@ async function startServer() {
   // API routes
   app.get('/api/health', (_req, res) => {
     res.json({ status: 'ok' });
+  });
+
+  app.post('/api/cron/weekly-digest', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+      return res.status(401).send('Unauthorized');
+    }
+
+    if (!firestore) return res.status(503).json({ error: 'Database unavailable' });
+
+    try {
+      const resend = new Resend(process.env.RESEND_API_KEY || 'fake');
+      const usersSnap = await firestore.collection('users').get();
+      let sentCount = 0;
+
+      for (const doc of usersSnap.docs) {
+        const userData = doc.data();
+        const email = userData.email || (userData.profile?.personal?.email);
+        if (!userData.profile || !email) continue;
+        const profile = userData.profile;
+
+        const report = generateWeeklyReport(profile);
+        if (!report.isAvailable) continue;
+
+        const html = `
+          <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #1e293b; line-height: 1.6;">
+            <div style="text-align: center; margin-bottom: 24px;">
+              <h2 style="color: #1a7a4a; margin-bottom: 0;">Your PapaProfit Weekly Money Report 📈</h2>
+              <p style="color: #64748b; font-size: 14px; margin-top: 4px;">Consistent small wins build wealth.</p>
+            </div>
+            <p>Hi ${profile.personal?.name?.split(' ')[0] || 'there'}, here's your personalized financial summary for the week.</p>
+            <div style="background: #f4f6f4; padding: 24px; border-radius: 16px; margin: 24px 0; border: 1px solid #d1e8d7;">
+              <table style="width: 100%; text-align: left; border-collapse: collapse;">
+                <tr style="border-bottom: 1px solid rgba(0,0,0,0.05);">
+                  <td style="padding: 12px 0; color: #475569; font-size: 14px;">Net Worth Change</td>
+                  <td style="padding: 12px 0; font-weight: 800; text-align: right; color: #0f172a;">${report.netWorthChange}</td>
+                </tr>
+                <tr style="border-bottom: 1px solid rgba(0,0,0,0.05);">
+                  <td style="padding: 12px 0; color: #475569; font-size: 14px;">Savings Rate Change</td>
+                  <td style="padding: 12px 0; font-weight: 800; text-align: right; color: #0f172a;">${report.savingsRateChange}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 12px 0; color: #475569; font-size: 14px;">Debt vs Income Change</td>
+                  <td style="padding: 12px 0; font-weight: 800; text-align: right; color: #0f172a;">${report.debtChange}</td>
+                </tr>
+              </table>
+            </div>
+            <p style="margin-bottom: 8px;"><strong>🔥 Biggest Win:</strong> <span style="color: #0f172a;">${report.topImprovement}</span></p>
+            <p><strong>💡 Next Best Action:</strong> <span style="color: #0f172a;">${report.recommendedNextStep}</span></p>
+            <p style="margin-top: 40px; font-size: 12px; color: #94a3b8; text-align: center;">Keep building wealth steadily.<br> PapaProfit Team</p>
+          </div>
+        `;
+
+        if (process.env.RESEND_API_KEY) {
+          await resend.emails.send({
+            from: 'reports@papaprofit.com',
+            to: email,
+            subject: 'Your PapaProfit Weekly Money Report 📈',
+            html
+          });
+        }
+        sentCount++;
+      }
+
+      res.json({ success: true, sentCount });
+    } catch (e: any) {
+      console.error('Digest error:', e);
+      res.status(500).json({ error: e.message });
+    }
   });
 
   app.post('/api/premium/create-checkout-session', requireAuth, async (req, res) => {
@@ -337,7 +408,6 @@ Example output format: {"intent":"general","confidenceScore":0.9,"clarificationN
   });
 
   const respondSchema = z.object({
-    userMsg: z.string().max(2000).optional(),
     parsedData: z.any(),
     chatHistory: z.array(z.object({ role: z.string(), content: z.string() })).max(20),
     onboardingStep: z.number().min(0).max(8).optional()
@@ -415,6 +485,8 @@ CONTEXT FROM BACKEND:
 - Just extracted data: ${parsedData?.updates?.length > 0 ? parsedData.updates.join(', ') : 'None'}
 - Parsing intent: ${parsedData?.intent || 'general'}
 - Recommended Action by Backend Engine: ${getNextBestAction(profile).title || 'Complete profile'}
+
+${profile?.preferences?.language === 'hi' ? 'CRITICAL: You MUST respond purely in Hindi (हिंदी), maintaining the elite financial advisor persona. Translate all your insights, tone, and financial advice exactly. DO NOT use English unless for standard financial terms (like SIP, EMI) if commonly understood.' : 'Respond in English.'}
 
 Respond to the user with discipline, clarity, and precision. Do not apologize endlessly. Do not use filler intro text.`;
 

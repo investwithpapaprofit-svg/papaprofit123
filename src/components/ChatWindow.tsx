@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useMemo } from 'react';
+import { UserProfile } from '../types';
 
 interface Message { 
   id?: string;
@@ -13,9 +14,35 @@ interface ChatWindowProps {
   formatMessage: (text: string) => string;
   chatEndRef: React.RefObject<HTMLDivElement | null>;
   userName?: string;
+  profile?: UserProfile;
+  onSend?: (msg: string) => void;
 }
 
-export function ChatWindow({ chatHistory, isTyping, formatMessage, chatEndRef, userName }: ChatWindowProps) {
+export function ChatWindow({ chatHistory, isTyping, formatMessage, chatEndRef, userName, profile, onSend }: ChatWindowProps) {
+  
+  const contextualPrompts = useMemo(() => {
+    if (isTyping || chatHistory.length === 0) return [];
+    const lastMsg = chatHistory[chatHistory.length - 1];
+    if (lastMsg.role === 'user') return [];
+
+    const prompts = [];
+    const hasLoans = profile?.loans && profile.loans.length > 0;
+    const hasGoals = profile?.goals && profile.goals.length > 0;
+    const isHindi = profile?.preferences?.language === 'hi';
+
+    if (hasLoans) {
+      prompts.push(isHindi ? 'अगर मैं अपना कर्ज जल्दी चुका दूं तो क्या होगा?' : 'What if I pay off my debt faster?');
+    }
+    if (hasGoals) {
+      prompts.push(isHindi ? 'मैं कितनी जल्दी अपने लक्ष्य तक पहुँच सकता हूँ?' : 'How fast can I reach my goal?');
+    }
+    prompts.push(isHindi ? 'अगर मैं SIP 5,000 रुपये बढ़ा दूं तो क्या होगा?' : 'What if I increase my SIP by ₹5k?');
+    prompts.push(isHindi ? 'क्या मैं कार लोन ले सकता हूँ?' : 'Can I afford a car loan?');
+
+    // Only show 3 randomly or just pick first 3
+    return prompts.slice(0, 3);
+  }, [chatHistory, isTyping, profile]);
+
   return (
     <div className="chat-messages p-4 flex-1 overflow-y-auto flex flex-col gap-4">
       {chatHistory.length === 0 && (
@@ -34,6 +61,21 @@ export function ChatWindow({ chatHistory, isTyping, formatMessage, chatEndRef, u
             <div dangerouslySetInnerHTML={{ __html: formatMessage(msg.content) }} />
             {msg.updates && msg.updates.length > 0 && (
               <div className="profile-update mt-2 inline-flex">✓ Profile updated: {msg.updates.join(' · ')}</div>
+            )}
+            
+            {/* Show contextual prompts under the LAST AI message */}
+            {i === chatHistory.length - 1 && msg.role === 'ai' && !isTyping && contextualPrompts.length > 0 && onSend && (
+              <div className="flex flex-wrap gap-2 mt-4 pt-3 border-t border-black/5">
+                {contextualPrompts.map((p, idx) => (
+                  <button 
+                    key={idx} 
+                    onClick={() => onSend(p)}
+                    className="bg-white text-[#1a7a4a] border border-[#1a7a4a]/20 px-3 py-1.5 rounded-full text-xs font-semibold hover:bg-[#1a7a4a]/5 transition-colors shadow-sm"
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
             )}
           </div>
         </div>

@@ -21,7 +21,7 @@ const Sidebar = lazy(() => import('./components/Sidebar').then(module => ({ defa
 const PremiumModal = lazy(() => import('./components/PremiumModal').then(module => ({ default: module.PremiumModal })));
 
 export default function App() {
-  const { user, loginError, handleLogin } = useAuth();
+  const { user, loginError, handleLogin, isLoggingIn } = useAuth();
   const { profile, setProfile, loadProfile, saveProfile, isLoading: isProfileLoading, loadedChatHistory } = useProfile(user);
   const { chatHistory, setChatHistory, isTyping, input, setInput, handleSend } = useChat(profile, saveProfile, user, loadedChatHistory);
 
@@ -40,6 +40,12 @@ export default function App() {
   const [localName, setLocalName] = useState(profile?.personal?.name || '');
   const [localAge, setLocalAge] = useState<string | number>(profile?.personal?.age || '');
   const [localRiskProfile, setLocalRiskProfile] = useState(profile?.personal?.riskProfile || 'moderate');
+
+  const toggleLanguage = () => {
+    const newLang = profile?.preferences?.language === 'hi' ? 'en' : 'hi';
+    const newProfile = { ...profile, preferences: { ...profile?.preferences, language: newLang as 'en'|'hi' } };
+    saveProfile(newProfile);
+  };
 
   useEffect(() => {
     setLocalName(profile?.personal?.name || '');
@@ -140,7 +146,7 @@ export default function App() {
   };
 
   if (!user) {
-    return <LoginScreen onLogin={handleLogin} error={loginError || ""} />;
+    return <LoginScreen onLogin={handleLogin} error={loginError || ""} isLoggingIn={isLoggingIn} />;
   }
 
   const fhsScore = profile.metrics.financialHealthScore;
@@ -168,6 +174,13 @@ export default function App() {
           <div className="topbar-logo"><span className="w-2 h-2 rounded-full bg-lime shadow-[0_0_8px_var(--color-lime)] animate-pulse"></span> PapaProfit</div>
         </div>
         <div className="topbar-right">
+          <button 
+            onClick={toggleLanguage}
+            className="flex items-center gap-[4px] px-[10px] py-[6px] rounded-full border-[1.5px] border-faint bg-white transition-all text-[0.7rem] font-bold text-gray-600 hover:border-lime"
+          >
+            {profile?.preferences?.language === 'hi' ? 'अ' : 'A'}
+          </button>
+          
           <button 
             onClick={() => { setShowDashboard(!showDashboard); setShowProfile(false); }}
             className={`flex items-center gap-[6px] px-[14px] py-[6px] rounded-full border-[1.5px] transition-all text-[0.73rem] font-semibold cursor-pointer ${showDashboard ? 'bg-xmint border-lime text-deep shadow-[0_0_0_3px_rgba(34,197,78,.1)]' : 'bg-ultramint border-faint text-muted hover:border-lime hover:text-deep'}`}
@@ -267,6 +280,8 @@ export default function App() {
                       formatMessage={formatAIResponse}
                       chatEndRef={chatEndRef}
                       userName={user.displayName || undefined}
+                      profile={profile}
+                      onSend={onSendWrapper}
                     />
 
                     <ChatInput

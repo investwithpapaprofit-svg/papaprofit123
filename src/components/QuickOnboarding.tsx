@@ -76,8 +76,8 @@ export function QuickOnboarding({ profile, onComplete, userName }: QuickOnboardi
   return (
     <div className="p-4 md:p-8 max-w-5xl mx-auto w-full animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="mb-8 pl-2">
-        <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">Welcome to PapaProfit, {userName.split(' ')[0]} 🚀</h2>
-        <p className="text-gray-500 text-sm">Let's get a quick snapshot of where you stand.</p>
+        <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">{profile.preferences?.language === 'hi' ? `PapaProfit में आपका स्वागत है, ${userName.split(' ')[0]} 🚀` : `Welcome to PapaProfit, ${userName.split(' ')[0]} 🚀`}</h2>
+        <p className="text-gray-500 text-sm">{profile.preferences?.language === 'hi' ? `आइए एक नज़र डालें कि आप आर्थिक रूप से कहाँ खड़े हैं।` : `Let's get a quick snapshot of where you stand.`}</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_350px] gap-8">
@@ -89,8 +89,8 @@ export function QuickOnboarding({ profile, onComplete, userName }: QuickOnboardi
           <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
             <div className="flex justify-between items-center mb-4">
               <div>
-                <h3 className="font-bold text-gray-800">Income Sources</h3>
-                <p className="text-xs text-gray-400 mt-1">We’ll use this to estimate savings potential.</p>
+                <h3 className="font-bold text-gray-800">{profile.preferences?.language === 'hi' ? 'आय के स्रोत (Income Sources)' : 'Income Sources'}</h3>
+                <p className="text-xs text-gray-400 mt-1">{profile.preferences?.language === 'hi' ? 'हम इसका उपयोग बचत क्षमता का अनुमान लगाने के लिए करेंगे।' : 'We’ll use this to estimate savings potential.'}</p>
               </div>
             </div>
             
@@ -135,8 +135,8 @@ export function QuickOnboarding({ profile, onComplete, userName }: QuickOnboardi
           <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
             <div className="flex justify-between items-center mb-4">
               <div>
-                <h3 className="font-bold text-gray-800">Major Monthly Expenses</h3>
-                <p className="text-xs text-gray-400 mt-1">Approximate numbers are completely fine.</p>
+                <h3 className="font-bold text-gray-800">{profile.preferences?.language === 'hi' ? 'प्रमुख मासिक खर्च (Major Monthly Expenses)' : 'Major Monthly Expenses'}</h3>
+                <p className="text-xs text-gray-400 mt-1">{profile.preferences?.language === 'hi' ? 'अनुमानित संख्याएँ बिल्कुल ठीक हैं।' : 'Approximate numbers are completely fine.'}</p>
               </div>
             </div>
             
