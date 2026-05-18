@@ -142,6 +142,27 @@ test('api error mapping test helper logic', () => {
   expect(mapChatError('Error 429 Too many requests')).toBe("I'm receiving too many requests right now. Please wait a moment and try again.");
 });
 
+test('empty missing optional fields sanitizes correctly', () => {
+    const p1 = { isPremium: true } as any;
+    const trusted = { isPremium: false };
+    const saved = sanitizeProfileForWrite(p1, trusted);
+    expect(saved.isPremium).toBe(false);
+    expect(saved.goals).toBeUndefined();
+    expect(saved.assets).toBeUndefined();
+});
+
+test('finance handles negative income safely', () => {
+    const profile = { ...mockProfile, income: [{ name: 'Reverse', value: -1000 }] };
+    expect(finance.totalIncome(profile)).toBe(-1000);
+});
+
+test('saving rate caps correctly for edge cases', () => {
+    const profile = { ...mockProfile, income: [{ name: 'Tiny', value: 10 }], expenses: [{ name: 'Massive', value: 10000 }] };
+    finance.recalculateMetrics(profile);
+    // Surplus is -9990. Rate = -9990 / 10 = -99900%
+    expect(profile.metrics.savingsRate).toBeLessThan(0);
+});
+
 test('goal simulator logic', () => {
     const profile: UserProfile = { ...mockProfile, income: [{ name: 'S', value: 100000 }], expenses: [{ name: 'E', value: 50000 }] }; // surplus 50k
     const goal = { name: 'House', target: 5000000, saved: 1000000, monthlyNeeded: 50000, months: 60 };

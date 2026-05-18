@@ -42,16 +42,25 @@ export function useChat(
   useEffect(() => {
     try {
       sessionStorage.setItem('papa_chat_history', JSON.stringify(chatHistory.slice(-15)));
-      if (user && chatHistory.length > 0) {
-         import('firebase/firestore').then(({ doc, setDoc }) => {
-           import('../firebase').then(({ db }) => {
-             setDoc(doc(db, 'users', user.uid), { 
-               chatHistory: chatHistory.slice(-15) 
-             }, { merge: true }).catch((e) => console.log('Chat sync error', e));
-           });
-         });
-      }
     } catch(e) {}
+
+    if (!user || chatHistory.length === 0) return;
+
+    const timer = setTimeout(() => {
+      import('firebase/firestore').then(({ doc, setDoc }) => {
+        import('../firebase').then(({ db }) => {
+          setDoc(
+            doc(db, 'users', user.uid),
+            {
+              chatHistory: chatHistory.slice(-15)
+            },
+            { merge: true }
+          ).catch((e) => console.log('Chat sync error', e));
+        });
+      });
+    }, 2000);
+
+    return () => clearTimeout(timer);
   }, [chatHistory, user]);
 
   // Add welcome message

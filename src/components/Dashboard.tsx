@@ -8,6 +8,7 @@ import { generateDebtPlan } from '../utils/debtPlanner';
 import { simulateGoal } from '../utils/goalSimulator';
 
 import { calculateFHSBreakdown } from '../utils/fhsBreakdown';
+import { generateWeeklyReport } from '../utils/weeklyReport';
 import { SubscriptionLeakDetector } from './SubscriptionLeakDetector';
 import { EmergencyFundPlanner } from './EmergencyFundPlanner';
 import { SIPGrowthSimulator } from './SIPGrowthSimulator';
@@ -23,6 +24,29 @@ export function Dashboard({ profile, isProfileLoading }: DashboardProps) {
   const [exportError, setExportError] = useState('');
 
   const fhsBreakdown = calculateFHSBreakdown(profile);
+  const weeklyReport = generateWeeklyReport(profile);
+
+  const exportScoreCard = async () => {
+    const cardEl = document.getElementById('share-score-card');
+    if (!cardEl) return;
+    
+    // Temporarily show for capture
+    cardEl.style.display = 'block';
+    try {
+      const [{ default: html2canvas }] = await Promise.all([import('html2canvas')]);
+      const canvas = await html2canvas(cardEl, { scale: 3, backgroundColor: '#ffffff' });
+      const imgData = canvas.toDataURL('image/png');
+      
+      const a = document.createElement('a');
+      a.href = imgData;
+      a.download = 'PapaProfit_Score.png';
+      a.click();
+    } catch(err) {
+      console.error(err);
+    } finally {
+      cardEl.style.display = 'none';
+    }
+  };
 
   const exportPDF = async () => {
     const dashboardElement = document.getElementById('dashboard-export-area');
@@ -104,23 +128,67 @@ export function Dashboard({ profile, isProfileLoading }: DashboardProps) {
     return '₹' + n.toLocaleString('en-IN');
   };
 
+  // Trend calculations
+  let nwTrendText = '';
+  if (profile.history && profile.history.length >= 2) {
+    const prev = profile.history[profile.history.length - 2].metricsSnapshot?.netWorth || 0;
+    const diff = nw - prev;
+    if (diff > 0) nwTrendText = `↑ Up ${fmtShort(diff)} since last month`;
+    else if (diff < 0) nwTrendText = `↓ Down ${fmtShort(Math.abs(diff))} since last month`;
+    else nwTrendText = 'No change since last month';
+  }
+
   return (
-    <div id="dashboard-export-area" className="p-6 bg-w rounded-[14px] shadow-[0_2px_20px_rgba(6,61,30,.08)] border-[1.5px] border-faint flex flex-col gap-6 relative">
-      <div className="absolute top-4 right-4 z-10 flex flex-col items-end gap-2">
-        <button 
-          onClick={exportPDF}
-          disabled={isExporting}
-          className="bg-forest text-white px-4 py-2 rounded-[10px] text-[0.85rem] font-bold shadow hover:bg-deep disabled:opacity-50 transition"
-        >
-          {isExporting ? 'Exporting...' : 'Export Report'}
-        </button>
-        {exportError && <div className="text-red-500 text-xs bg-red-50 px-2 py-1 rounded">{exportError}</div>}
+    <>
+      <div id="share-score-card" style={{ display: 'none', width: '380px', padding: '24px', background: 'linear-gradient(135deg, #f4f6f4 0%, #e0ece4 100%)', borderRadius: '16px', border: '1px solid #d1e8d7', color: '#063d1e', fontFamily: 'sans-serif' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+             <div style={{ width: '24px', height: '24px', background: '#22c55e', borderRadius: '50%' }}></div>
+             <div style={{ fontWeight: 'bold', fontSize: '18px' }}>PapaProfit</div>
+          </div>
+          <div style={{ fontSize: '14px', textTransform: 'uppercase', letterSpacing: '1px', opacity: 0.8, marginBottom: '4px', fontWeight: 'bold' }}>Financial Health Score</div>
+          <div style={{ fontSize: '48px', fontWeight: '900', color: '#1a7a4a', marginBottom: '20px', lineHeight: 1 }}>{fhsBreakdown.overallScore}<span style={{ fontSize: '20px', opacity: 0.6 }}>/100</span></div>
+          
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px', background: '#ffffff', padding: '12px', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
+             <div>
+                <div style={{ fontSize: '11px', textTransform: 'uppercase', opacity: 0.7, fontWeight: 'bold' }}>Net Worth</div>
+                <div style={{ fontSize: '16px', fontWeight: '800' }}>{fmtShort(nw)}</div>
+             </div>
+             <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: '11px', textTransform: 'uppercase', opacity: 0.7, fontWeight: 'bold' }}>Savings Rate</div>
+                <div style={{ fontSize: '16px', fontWeight: '800' }}>{Math.round(profile.metrics.savingsRate || 0)}%</div>
+             </div>
+          </div>
+          
+          <div style={{ fontStyle: 'italic', fontSize: '14px', textAlign: 'center', opacity: 0.8, borderTop: '1px solid rgba(0,0,0,0.05)', paddingTop: '16px' }}>
+              "Small consistent wins build wealth."
+          </div>
       </div>
+
+      <div id="dashboard-export-area" className="p-6 bg-w rounded-[14px] shadow-[0_2px_20px_rgba(6,61,30,.08)] border-[1.5px] border-faint flex flex-col gap-6 relative">
+        <div className="absolute top-4 right-4 z-10 flex flex-col items-end gap-2">
+          <div className="flex gap-2">
+            <button 
+              onClick={exportScoreCard}
+              className="bg-lime text-deep px-4 py-2 rounded-[10px] text-[0.85rem] font-bold shadow hover:bg-[#86efac] transition"
+            >
+              Share Score
+            </button>
+            <button 
+              onClick={exportPDF}
+              disabled={isExporting}
+              className="bg-forest text-white px-4 py-2 rounded-[10px] text-[0.85rem] font-bold shadow hover:bg-deep disabled:opacity-50 transition"
+            >
+              {isExporting ? 'Exporting...' : 'Export Report'}
+            </button>
+          </div>
+          {exportError && <div className="text-red-500 text-xs bg-red-50 px-2 py-1 rounded">{exportError}</div>}
+        </div>
       
       <div className="grid grid-cols-2 gap-[14px] mt-8">
-        <div className="bg-ultramint border-[1.5px] border-faint rounded-[14px] p-5 shadow-[0_4px_14px_rgba(34,197,78,.05)] hover:-translate-y-px transition">
+        <div className="bg-ultramint border-[1.5px] border-faint rounded-[14px] p-5 shadow-[0_4px_14px_rgba(34,197,78,.05)] hover:-translate-y-px transition relative overflow-hidden">
           <div className="text-[0.62rem] font-bold tracking-[0.08em] uppercase text-ghost mb-2">Total Net Worth</div>
           <div className="text-3xl font-serif text-forest">{fmt(nw)}</div>
+          {nwTrendText && <div className="text-[0.65rem] text-lime-700 font-semibold mt-1 opacity-80">{nwTrendText}</div>}
         </div>
         <div className="bg-ultramint border-[1.5px] border-faint rounded-[14px] p-5 shadow-[0_4px_14px_rgba(34,197,78,.05)] hover:-translate-y-px transition">
           <div className="text-[0.62rem] font-bold tracking-[0.08em] uppercase text-ghost mb-2">Monthly Cash Flow</div>
@@ -179,6 +247,28 @@ export function Dashboard({ profile, isProfileLoading }: DashboardProps) {
           )}
       </div>
 
+      {weeklyReport.isAvailable && (
+        <div className="mt-4 border-t-[1.5px] border-faint pt-6">
+          <h4 className="text-[0.62rem] font-bold tracking-[0.1em] uppercase text-ghost mb-4">Progress Summary</h4>
+          <div className="bg-[#f0f9f4] border border-[#d1e8d7] rounded-lg p-4 animate-in fade-in slide-in-from-bottom-4 duration-700">
+            <div className="grid grid-cols-2 gap-4 text-sm mb-3">
+               <div>
+                  <span className="text-gray-500 block text-xs">Net Worth Change</span>
+                  <span className="font-bold text-gray-900">{weeklyReport.netWorthChange}</span>
+               </div>
+               <div>
+                  <span className="text-gray-500 block text-xs">Savings Rate Change</span>
+                  <span className="font-bold text-gray-900">{weeklyReport.savingsRateChange}</span>
+               </div>
+            </div>
+            <div className="border-t border-[#d1e8d7] pt-3 text-xs space-y-1">
+               <p><span className="font-semibold text-gray-700">Top area of improvement:</span> {weeklyReport.topImprovement}</p>
+               <p><span className="font-semibold text-gray-700">Recommended next step:</span> {weeklyReport.recommendedNextStep}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {historyData.length > 1 && (
         <div className="h-[220px] mt-4">
           <h4 className="text-[0.62rem] font-bold tracking-[0.1em] uppercase text-ghost mb-[14px]">Net Worth Journey</h4>
@@ -200,7 +290,7 @@ export function Dashboard({ profile, isProfileLoading }: DashboardProps) {
         </div>
       )}
 
-      {assetData.length > 0 && (
+      {assetData.length > 0 ? (
         <div className="mt-4 border-t-[1.5px] border-faint pt-6">
           <h4 className="text-[0.62rem] font-bold tracking-[0.1em] uppercase text-ghost mb-4">Asset Allocation</h4>
           <div className="flex items-center justify-center h-48">
@@ -226,9 +316,18 @@ export function Dashboard({ profile, isProfileLoading }: DashboardProps) {
             </ResponsiveContainer>
           </div>
         </div>
+      ) : (
+        <div className="mt-4 border-t-[1.5px] border-faint pt-6">
+          <h4 className="text-[0.62rem] font-bold tracking-[0.1em] uppercase text-ghost mb-4">Asset Allocation</h4>
+          <div className="flex flex-col items-center justify-center h-32 bg-gray-50 border border-dashed border-gray-200 rounded-lg text-gray-400">
+             <div className="text-xl mb-1">📈</div>
+             <p className="text-xs font-medium">No investments added yet</p>
+             <p className="text-[10px] max-w-[200px] text-center mt-1">Tell the AI about your mutual funds, stocks, or real estate.</p>
+          </div>
+        </div>
       )}
 
-      {profile.goals && profile.goals.length > 0 && (
+      {profile.goals && profile.goals.length > 0 ? (
         <div className="mt-4 border-t border-gray-100 pt-6">
           <h4 className="text-[0.62rem] font-bold tracking-[0.1em] uppercase text-ghost mb-4">Goal Simulator</h4>
           <div className="space-y-4">
@@ -277,6 +376,14 @@ export function Dashboard({ profile, isProfileLoading }: DashboardProps) {
             })}
           </div>
         </div>
+      ) : (
+        <div className="mt-4 border-t border-gray-100 pt-6">
+          <h4 className="text-[0.62rem] font-bold tracking-[0.1em] uppercase text-ghost mb-4">Goal Simulator</h4>
+          <div className="flex flex-col items-center justify-center h-24 bg-gray-50 border border-dashed border-gray-200 rounded-lg text-gray-400">
+             <p className="text-xs font-medium">Add your first savings goal</p>
+             <p className="text-[10px] text-center mt-1">e.g. "I want to save ₹5L for a car in 2 years"</p>
+          </div>
+        </div>
       )}
 
       {profile.loans && profile.loans.length > 0 && (() => {
@@ -316,5 +423,6 @@ export function Dashboard({ profile, isProfileLoading }: DashboardProps) {
       </div>
 
     </div>
+    </>
   );
 }

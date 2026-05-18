@@ -66,5 +66,5 @@ test('weekly report', () => {
   expect(report.isAvailable).toBe(true);
   expect(report.netWorthChange).toBe('+₹10,000');
   expect(report.savingsRateChange).toBe('+5.0%');
-  expect(report.debtChange).toBe('-₹5,000');
+  expect(report.debtChange).toBe('+0.0% vs Income');
 });

@@ -156,8 +156,8 @@ export default function App() {
         </div>
       )}
       {isOffline && (
-        <div className="fixed top-0 left-0 right-0 bg-yellow-500 text-black text-center text-sm py-2 z-50">
-          You are offline. Changes will sync automatically when reconnected.
+        <div className="fixed top-0 left-0 right-0 bg-yellow-500 text-black text-center text-sm py-2 z-50 font-medium">
+          Offline — changes will sync later
         </div>
       )}
       <div className="topbar">
@@ -175,9 +175,15 @@ export default function App() {
             📊 {showDashboard ? 'Back to Chat' : 'Dashboard'}
           </button>
           
-          <div className="fhs-badge" onClick={() => { setShowProfile(!showProfile); setShowDashboard(false); }}>
-            <span className="w-1.5 h-1.5 rounded-full bg-lime shadow-[0_0_6px_var(--color-lime)] animate-pulse"></span>
-            <span>FHS <strong>{fhsScore !== null ? fhsScore : '--'}</strong></span>
+          <div className="fhs-badge relative" onClick={() => { setShowProfile(!showProfile); setShowDashboard(false); }}>
+            {isProfileLoading ? (
+               <div className="w-16 h-6 bg-gray-200 animate-pulse rounded-full"></div>
+            ) : (
+               <>
+                 <span className="w-1.5 h-1.5 rounded-full bg-lime shadow-[0_0_6px_var(--color-lime)] animate-pulse"></span>
+                 <span>FHS <strong>{(fhsScore !== undefined && fhsScore > 0) ? fhsScore : '--'}</strong></span>
+               </>
+            )}
           </div>
           
           {profile.isPremium && (
@@ -410,11 +416,15 @@ export default function App() {
             
             <div className="profile-section">
               <div className="mt-4">
-                <Portfolio profile={profile} onUpdate={(newProfile) => {
+                <Portfolio profile={profile} onUpdate={async (newProfile) => {
                   finance.recalculateMetrics(newProfile);
                   setProfile(newProfile);
-                  saveProfile(newProfile);
-                  showToast('Portfolio updated');
+                  try {
+                    await saveProfile(newProfile);
+                    showToast('Portfolio updated');
+                  } catch (err) {
+                    showToast('Portfolio failed to save');
+                  }
                 }} />
               </div>
             </div>
@@ -503,9 +513,14 @@ export default function App() {
                         await deleteUser(user);
                         showToast("Account deleted.");
                       }
-                    } catch(err) {
+                    } catch(err: any) {
                       console.error(err);
-                      showToast("Please log out and log back in to delete your account.");
+                      if (err.code === 'auth/requires-recent-login') {
+                        showToast("For security, please log in again before deleting your account.");
+                        import('./firebase').then(({auth}) => auth.signOut());
+                      } else {
+                        showToast("Please log out and log back in to delete your account.");
+                      }
                     } finally {
                       setIsDeleting(false);
                       setDeleteModalOpen(false);

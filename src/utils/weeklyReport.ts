@@ -27,7 +27,7 @@ export function generateWeeklyReport(profile: import('../types').UserProfile): W
 
   result.isAvailable = true;
 
-  const first = snapshots[0].metricsSnapshot;
+  const first = snapshots[0].metricsSnapshot as any;
   const last = profile.metrics;
 
   if (!first || !last) return result;
@@ -40,8 +40,9 @@ export function generateWeeklyReport(profile: import('../types').UserProfile): W
   const srDiff = last.savingsRate - first.savingsRate;
   result.savingsRateChange = `${srDiff >= 0 ? '+' : ''}${srDiff.toFixed(1)}%`;
 
-  const debtDiff = (last.totalLiabilities || 0) - (first.totalLiabilities || 0);
-  result.debtChange = fmtDiff(debtDiff);
+  const lastDebtRatio = isNaN(last.debtToIncomeRatio) ? 0 : last.debtToIncomeRatio;
+  const debtDiff = lastDebtRatio - (first.debtToIncome || 0);
+  result.debtChange = `${debtDiff >= 0 ? '+' : ''}${debtDiff.toFixed(1)}% vs Income`;
 
   const subExpenses = (profile.subscriptions || []).reduce((s, sub) => s + (sub.billingCycle === 'yearly' ? sub.cost / 12 : sub.cost), 0);
   if (subExpenses > (last.totalIncome || 0) * 0.05) {

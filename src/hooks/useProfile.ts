@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { doc, getDocFromServer, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { User } from 'firebase/auth';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { UserProfile } from '../types';
@@ -46,7 +46,7 @@ export function useProfile(user: User | null) {
     try {
       const ref = doc(db, 'users', user.uid);
       
-      const snap = await getDocFromServer(ref);
+      const snap = await getDoc(ref);
       if (snap.exists()) {
         const data = snap.data();
         let loadedProfile = data?.profile || {};
@@ -136,6 +136,30 @@ export function useProfile(user: User | null) {
           safeProfile.portfolio = updatedStocks;
           finance.recalculateMetrics(safeProfile);
         }
+        // Snapshot history logic
+        const currentMonth = new Date().toISOString().slice(0, 7); // e.g. "2026-05"
+        const lastSnapshotMonth = safeProfile.history && safeProfile.history.length > 0 
+          ? safeProfile.history[safeProfile.history.length - 1].month 
+          : null;
+
+        if (lastSnapshotMonth !== currentMonth) {
+          safeProfile.history = safeProfile.history || [];
+          safeProfile.history.push({
+            month: currentMonth,
+            timestamp: Date.now(),
+            metricsSnapshot: {
+              netWorth: safeProfile.metrics.netWorth,
+              savingsRate: safeProfile.metrics.savingsRate,
+              cashFlow: safeProfile.metrics.monthlyCashFlow,
+              debtToIncome: safeProfile.metrics.debtToIncomeRatio
+            }
+          });
+          // Optimistically save the new history (fire and forget to not block load)
+          import('firebase/firestore').then(({ setDoc }) => {
+            setDoc(ref, { profile: { history: safeProfile.history } }, { merge: true }).catch(() => {});
+          });
+        }
+
         setProfile(safeProfile);
       } else {
         const dp = defaultProfile();

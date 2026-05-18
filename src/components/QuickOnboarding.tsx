@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { UserProfile } from '../types';
 import { finance } from '../finance';
 
@@ -9,78 +9,57 @@ interface QuickOnboardingProps {
 }
 
 export function QuickOnboarding({ profile, onComplete, userName }: QuickOnboardingProps) {
-  const [income, setIncome] = useState('');
-  const [expenses, setExpenses] = useState('');
+  const [incomes, setIncomes] = useState([{ id: crypto.randomUUID(), type: 'Salary', amount: '' }]);
+  const [expenses, setExpenses] = useState([{ id: crypto.randomUUID(), category: 'Rent', amount: '' }]);
   const [goalName, setGoalName] = useState('');
   const [goalTarget, setGoalTarget] = useState('');
-  const [age, setAge] = useState('');
+  const [goalTimeline, setGoalTimeline] = useState('3');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [step, setStep] = useState(1);
-  const [instantValue, setInstantValue] = useState<{
-    savingsRate: number;
-    surplus: number;
-    fhsEstimate: number;
-  } | null>(null);
 
-  const handleNext = () => {
-    if (step === 1 && (!income || !expenses)) {
-      alert("Please enter income and expenses.");
-      return;
-    }
-    
-    if (step === 1) {
-      // Calculate instant value
-      const inc = parseFloat(income);
-      const exp = parseFloat(expenses);
-      const surplus = inc - exp;
-      const savingsRate = inc > 0 ? (surplus / inc) * 100 : 0;
-      
-      let fhsEstimate = 50;
-      if (savingsRate > 20) fhsEstimate += 15;
-      if (savingsRate > 30) fhsEstimate += 10;
-      if (surplus < 0) fhsEstimate -= 20;
+  const totalIncome = useMemo(() => incomes.reduce((acc, curr) => acc + (parseFloat(curr.amount as string) || 0), 0), [incomes]);
+  const totalExpenses = useMemo(() => expenses.reduce((acc, curr) => acc + (parseFloat(curr.amount as string) || 0), 0), [expenses]);
+  const estimatedSavings = totalIncome - totalExpenses;
+  const savingsRate = totalIncome > 0 ? (estimatedSavings / totalIncome) * 100 : 0;
 
-      setInstantValue({
-        savingsRate,
-        surplus,
-        fhsEstimate
-      });
-      setStep(2);
-    } else {
-      handleComplete();
-    }
-  };
+  const handleAddIncome = () => setIncomes([...incomes, { id: crypto.randomUUID(), type: 'Other', amount: '' }]);
+  const handleRemoveIncome = (id: string) => setIncomes(incomes.filter(i => i.id !== id));
+  
+  const handleAddExpense = () => setExpenses([...expenses, { id: crypto.randomUUID(), category: 'Other', amount: '' }]);
+  const handleRemoveExpense = (id: string) => setExpenses(expenses.filter(e => e.id !== id));
 
   const handleComplete = async () => {
     setIsSubmitting(true);
     try {
-      const parsedIncome = parseFloat(income) || 0;
-      const parsedExpenses = parseFloat(expenses) || 0;
-      const parsedAge = parseInt(age) || undefined;
-      const parsedGoalTarget = parseFloat(goalTarget) || 0;
-
       const newProfile = { ...profile };
       
-      if (parsedIncome > 0) {
-        newProfile.income = [{ name: 'Primary Income', value: parsedIncome }];
+      const mappedIncomes = incomes
+        .filter(i => parseFloat(i.amount as string) > 0)
+        .map(i => ({ name: i.type, value: parseFloat(i.amount as string) }));
+      
+      if (mappedIncomes.length > 0) {
+        newProfile.income = mappedIncomes;
       }
-      if (parsedExpenses > 0) {
-        newProfile.expenses = [{ name: 'Living Expenses', value: parsedExpenses }];
+
+      const mappedExpenses = expenses
+        .filter(e => parseFloat(e.amount as string) > 0)
+        .map(e => ({ name: e.category, value: parseFloat(e.amount as string), category: e.category }));
+
+      if (mappedExpenses.length > 0) {
+        newProfile.expenses = mappedExpenses;
       }
-      if (goalName) {
+
+      if (goalName && parseFloat(goalTarget) > 0) {
         newProfile.goals = [{ 
           id: crypto.randomUUID(), 
           name: goalName, 
-          target: parsedGoalTarget, 
+          target: parseFloat(goalTarget), 
           saved: 0, 
-          months: 12,
+          months: parseInt(goalTimeline) * 12,
           type: 'custom'
         }];
       }
-      if (parsedAge) {
-        newProfile.personal = { ...newProfile.personal, age: parsedAge, name: userName };
-      }
 
+      newProfile.personal = { ...newProfile.personal, name: userName };
       newProfile.onboardingCompleted = true;
       finance.recalculateMetrics(newProfile);
       
@@ -92,146 +71,231 @@ export function QuickOnboarding({ profile, onComplete, userName }: QuickOnboardi
     }
   };
 
-  if (step === 2 && instantValue) {
-    return (
-      <div className="flex flex-col items-center justify-center p-4 md:p-8 animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-2xl mx-auto w-full">
-        <div className="bg-white rounded-3xl shadow-xl w-full p-8 md:p-12 text-center border border-gray-100 relative overflow-hidden">
-          
-          {/* Subtle Progress Bar */}
-          <div className="absolute top-0 left-0 right-0 h-1 bg-gray-100">
-            <div className="h-full bg-lime transition-all duration-500 w-full"></div>
-          </div>
-
-          <div className="w-20 h-20 bg-lime/20 text-deep rounded-full flex items-center justify-center mx-auto mb-6 mt-2">
-            <span className="text-4xl">🚀</span>
-          </div>
-          <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">Great start, {userName.split(' ')[0]}!</h2>
-          <p className="text-gray-500 mb-8">Here's a quick estimate based on your numbers:</p>
-          
-          <div className="grid grid-cols-2 gap-4 mb-8">
-            <div className="bg-gray-50 rounded-2xl p-6 border border-gray-100">
-              <div className="text-sm font-semibold text-gray-500 mb-1">Monthly Surplus</div>
-              <div className={`text-2xl md:text-3xl font-bold ${instantValue.surplus >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                {instantValue.surplus >= 0 ? '+' : ''}₹{Math.abs(instantValue.surplus).toLocaleString('en-IN')}
-              </div>
-            </div>
-            <div className="bg-gray-50 rounded-2xl p-6 border border-gray-100">
-              <div className="text-sm font-semibold text-gray-500 mb-1">Savings Rate</div>
-              <div className={`text-2xl md:text-3xl font-bold ${instantValue.savingsRate >= 20 ? 'text-green-600' : 'text-orange-500'}`}>
-                {instantValue.savingsRate.toFixed(0)}%
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-blue-50 text-blue-800 p-6 rounded-2xl mb-8 text-left text-sm md:text-base border border-blue-100 flex gap-4">
-             <div className="text-2xl">💡</div>
-             <div>
-               <p className="font-semibold mb-1">Quick Insight</p>
-               <p className="opacity-90 leading-relaxed">
-                 {instantValue.savingsRate >= 20 
-                   ? "You're saving a healthy percentage of your income. The next step is optimizing where that money goes—like tax-saving instruments or high-growth SIPs."
-                   : "Your savings rate is a bit tight. Let's work on reducing some discretionary expenses to build a stronger safety net."}
-               </p>
-             </div>
-          </div>
-
-          <button 
-            onClick={handleComplete}
-            disabled={isSubmitting}
-            className="w-full bg-deep text-white py-4 rounded-xl font-semibold text-lg hover:bg-gray-800 transition-colors shadow-lg disabled:opacity-50 flex justify-center items-center gap-2"
-          >
-            {isSubmitting ? 'Setting up...' : 'Start Planning ➔'}
-          </button>
-        </div>
-      </div>
-    );
-  }
+  const isFormValid = totalIncome > 0 && totalExpenses > 0;
 
   return (
-    <div className="flex flex-col items-center justify-center p-4 md:p-8 animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-lg mx-auto w-full">
-      <div className="bg-white rounded-3xl shadow-xl w-full p-8 md:p-10 border border-gray-100 relative overflow-hidden">
+    <div className="p-4 md:p-8 max-w-5xl mx-auto w-full animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div className="mb-8 pl-2">
+        <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">Welcome to PapaProfit, {userName.split(' ')[0]} 🚀</h2>
+        <p className="text-gray-500 text-sm">Let's get a quick snapshot of where you stand.</p>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_350px] gap-8">
         
-        {/* Subtle Progress Bar */}
-        <div className="absolute top-0 left-0 right-0 h-1 bg-gray-100">
-          <div className="h-full bg-lime transition-all duration-500 w-1/2"></div>
-        </div>
-
-        <div className="mb-8 text-center mt-2">
-          <div className="w-16 h-16 bg-gradient-to-br from-lime to-green-400 text-deep rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-lime/20 rotate-3">
-             <span className="text-3xl">🤑</span>
+        {/* LEFT COLUMN - FORM */}
+        <div className="space-y-8">
+          
+          {/* INCOMES */}
+          <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+            <div className="flex justify-between items-center mb-4">
+              <div>
+                <h3 className="font-bold text-gray-800">Income Sources</h3>
+                <p className="text-xs text-gray-400 mt-1">We’ll use this to estimate savings potential.</p>
+              </div>
+            </div>
+            
+            <div className="space-y-3">
+              {incomes.map((inc) => (
+                <div key={inc.id} className="flex gap-2">
+                  <select 
+                    value={inc.type} 
+                    onChange={e => setIncomes(incomes.map(i => i.id === inc.id ? { ...i, type: e.target.value } : i))}
+                    className="w-1/3 bg-gray-50 border border-gray-200 rounded-lg py-2.5 px-3 text-sm text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-lime"
+                  >
+                    <option value="Salary">Salary</option>
+                    <option value="Freelance">Freelance</option>
+                    <option value="Business">Business</option>
+                    <option value="Rental">Rental</option>
+                    <option value="Dividends">Dividends</option>
+                    <option value="Side Hustle">Side Hustle</option>
+                    <option value="Other">Other</option>
+                  </select>
+                  <div className="relative flex-1">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-semibold text-sm">₹</span>
+                    <input 
+                      type="number" 
+                      value={inc.amount}
+                      onChange={e => setIncomes(incomes.map(i => i.id === inc.id ? { ...i, amount: e.target.value } : i))}
+                      placeholder="Amount"
+                      className="w-full bg-gray-50 border border-gray-200 rounded-lg py-2.5 pl-8 pr-3 text-sm text-gray-900 font-semibold focus:outline-none focus:ring-2 focus:ring-lime"
+                    />
+                  </div>
+                  {incomes.length > 1 && (
+                    <button onClick={() => handleRemoveIncome(inc.id)} className="w-10 h-[42px] flex items-center justify-center text-gray-400 hover:bg-gray-100 rounded-lg transition-colors">
+                      ×
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+            <button onClick={handleAddIncome} className="text-xs font-bold text-lime-700 mt-4 hover:opacity-80 transition">+ Add Income Source</button>
           </div>
-          <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">Welcome to PapaProfit</h2>
-          <p className="text-gray-500 text-sm">Let's get a quick snapshot of where you stand.</p>
-        </div>
 
-        <div className="space-y-6">
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Montly Income (After Tax)</label>
-            <div className="relative">
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-semibold">₹</span>
+          {/* EXPENSES */}
+          <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+            <div className="flex justify-between items-center mb-4">
+              <div>
+                <h3 className="font-bold text-gray-800">Major Monthly Expenses</h3>
+                <p className="text-xs text-gray-400 mt-1">Approximate numbers are completely fine.</p>
+              </div>
+            </div>
+            
+            <div className="space-y-3">
+              {expenses.map((exp) => (
+                <div key={exp.id} className="flex gap-2">
+                  <select 
+                    value={exp.category} 
+                    onChange={e => setExpenses(expenses.map(x => x.id === exp.id ? { ...x, category: e.target.value } : x))}
+                    className="w-1/3 bg-gray-50 border border-gray-200 rounded-lg py-2.5 px-3 text-sm text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-lime"
+                  >
+                    <option value="Rent">Rent</option>
+                    <option value="EMI">EMI</option>
+                    <option value="Food">Food</option>
+                    <option value="Transport">Transport</option>
+                    <option value="Utilities">Utilities</option>
+                    <option value="Insurance">Insurance</option>
+                    <option value="Subscriptions">Subscriptions</option>
+                    <option value="Shopping">Shopping</option>
+                    <option value="Family">Family</option>
+                    <option value="Other">Other</option>
+                  </select>
+                  <div className="relative flex-1">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-semibold text-sm">₹</span>
+                    <input 
+                      type="number" 
+                      value={exp.amount}
+                      onChange={e => setExpenses(expenses.map(x => x.id === exp.id ? { ...x, amount: e.target.value } : x))}
+                      placeholder="Amount"
+                      className="w-full bg-gray-50 border border-gray-200 rounded-lg py-2.5 pl-8 pr-3 text-sm text-gray-900 font-semibold focus:outline-none focus:ring-2 focus:ring-lime"
+                    />
+                  </div>
+                  {expenses.length > 1 && (
+                    <button onClick={() => handleRemoveExpense(exp.id)} className="w-10 h-[42px] flex items-center justify-center text-gray-400 hover:bg-gray-100 rounded-lg transition-colors">
+                      ×
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+            <button onClick={handleAddExpense} className="text-xs font-bold text-lime-700 mt-4 hover:opacity-80 transition">+ Add Expense</button>
+          </div>
+
+          {/* GOALS */}
+          <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+            <div className="mb-4">
+              <h3 className="font-bold text-gray-800">Biggest Financial Goal (Optional)</h3>
+              <p className="text-xs text-gray-400 mt-1">This helps personalize your financial plan.</p>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
               <input 
-                type="number" 
-                value={income}
-                onChange={e => setIncome(e.target.value)}
-                placeholder="80000"
-                className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 pl-10 pr-4 text-gray-900 font-semibold focus:outline-none focus:ring-2 focus:ring-lime focus:bg-white transition-all"
+                type="text" 
+                value={goalName}
+                onChange={e => setGoalName(e.target.value)}
+                placeholder="e.g. Buy a Car"
+                className="w-full bg-gray-50 border border-gray-200 rounded-lg py-2.5 px-4 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-lime"
               />
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-semibold text-sm">₹</span>
+                <input 
+                  type="number" 
+                  value={goalTarget}
+                  onChange={e => setGoalTarget(e.target.value)}
+                  placeholder="Target Amount"
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg py-2.5 pl-8 pr-4 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-lime"
+                />
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-500 font-medium">Timeline:</span>
+              <select 
+                value={goalTimeline} 
+                onChange={e => setGoalTimeline(e.target.value)}
+                className="bg-gray-50 border border-gray-200 rounded-lg py-1 px-2 text-xs text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-lime"
+              >
+                <option value="1">1 year</option>
+                <option value="3">3 years</option>
+                <option value="5">5 years</option>
+                <option value="10">10 years</option>
+                <option value="20">20 years</option>
+              </select>
             </div>
           </div>
-
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Monthly Expenses (Approx)</label>
-            <div className="relative">
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-semibold">₹</span>
-              <input 
-                type="number" 
-                value={expenses}
-                onChange={e => setExpenses(e.target.value)}
-                placeholder="50000"
-                className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 pl-10 pr-4 text-gray-900 font-semibold focus:outline-none focus:ring-2 focus:ring-lime focus:bg-white transition-all"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Biggest Financial Goal (Optional)</label>
-            <div className="grid grid-cols-[1fr_120px] gap-2">
-               <input 
-                 type="text" 
-                 value={goalName}
-                 onChange={e => setGoalName(e.target.value)}
-                 placeholder="e.g. Buy a Car, Emergency Fund"
-                 className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 px-4 text-gray-900 focus:outline-none focus:ring-2 focus:ring-lime focus:bg-white transition-all"
-               />
-               <input 
-                 type="number" 
-                 value={goalTarget}
-                 onChange={e => setGoalTarget(e.target.value)}
-                 placeholder="Target (₹)"
-                 className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 px-4 text-gray-900 focus:outline-none focus:ring-2 focus:ring-lime focus:bg-white transition-all"
-               />
-            </div>
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Age (Optional)</label>
-            <input 
-              type="number" 
-              value={age}
-              onChange={e => setAge(e.target.value)}
-              placeholder="30"
-              className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 px-4 text-gray-900 focus:outline-none focus:ring-2 focus:ring-lime focus:bg-white transition-all"
-            />
-          </div>
-
-          <button 
-            onClick={handleNext}
-            disabled={!income || !expenses}
-            className="w-full bg-deep text-white py-4 rounded-xl font-semibold text-lg hover:bg-gray-800 transition-colors shadow-lg disabled:opacity-50 mt-4"
-          >
-            Calculate Snapshot ➔
-          </button>
         </div>
+
+        {/* RIGHT COLUMN - SNAPSHOT */}
+        <div>
+          <div className="sticky top-6">
+            <div className="bg-white rounded-3xl p-6 shadow-xl border border-gray-100 flex flex-col gap-6">
+              <div className="text-center pb-4 border-b border-gray-50">
+                <div className="w-12 h-12 bg-lime/20 text-deep rounded-full flex items-center justify-center mx-auto mb-3">
+                  <span className="text-2xl">📸</span>
+                </div>
+                <h3 className="font-bold text-gray-900">Your Snapshot</h3>
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-gray-500 font-medium">Monthly Income</span>
+                  <span className="font-bold text-gray-900">₹{totalIncome.toLocaleString('en-IN')}</span>
+                </div>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-gray-500 font-medium">Monthly Expenses</span>
+                  <span className="font-bold text-gray-900">₹{totalExpenses.toLocaleString('en-IN')}</span>
+                </div>
+                
+                <div className="h-px w-full bg-gray-100 my-2"></div>
+                
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-600 font-semibold text-sm">Est. Savings</span>
+                  <span className={`font-bold text-lg ${estimatedSavings >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                    {estimatedSavings >= 0 ? '+' : ''}₹{estimatedSavings.toLocaleString('en-IN')}
+                  </span>
+                </div>
+
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-600 font-semibold text-sm">Savings Rate</span>
+                  <span className={`font-bold ${savingsRate >= 20 ? 'text-green-600' : savingsRate > 0 ? 'text-orange-500' : 'text-red-500'}`}>
+                    {savingsRate.toFixed(1)}%
+                  </span>
+                </div>
+              </div>
+
+              {/* Smart Warnings */}
+              {totalIncome > 0 && totalExpenses > 0 && (
+                <div className="mt-2 text-xs font-medium">
+                  {estimatedSavings < 0 ? (
+                    <div className="bg-red-50 text-red-700 p-3 rounded-lg border border-red-100">
+                      You're spending more than you earn. We'll help you get this back on track.
+                    </div>
+                  ) : savingsRate < 10 ? (
+                    <div className="bg-orange-50 text-orange-700 p-3 rounded-lg border border-orange-100">
+                      Your savings rate is a bit tight. Small optimizations will help.
+                    </div>
+                  ) : savingsRate >= 30 ? (
+                    <div className="bg-green-50 text-green-700 p-3 rounded-lg border border-green-100">
+                       Excellent savings rate! You're in a great position to build wealth.
+                    </div>
+                  ) : null}
+                </div>
+              )}
+
+              <button 
+                onClick={handleComplete}
+                disabled={!isFormValid || isSubmitting}
+                className="w-full bg-deep text-white py-3.5 rounded-xl font-bold text-[0.95rem] tracking-wide hover:bg-gray-800 transition-colors shadow-md disabled:opacity-50 mt-2 flex justify-center items-center gap-2"
+              >
+                {isSubmitting ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                    Generating...
+                  </>
+                ) : 'Generate My Financial Snapshot ➔'}
+              </button>
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>
   );

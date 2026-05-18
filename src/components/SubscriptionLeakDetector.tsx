@@ -2,7 +2,17 @@ import { UserProfile } from '../types';
 
 export function SubscriptionLeakDetector({ profile }: { profile: UserProfile }) {
     const subs = profile.subscriptions || [];
-    if (subs.length === 0) return null;
+    if (subs.length === 0) {
+      return (
+        <div className="bg-white rounded-[14px] p-5 shadow-[0_4px_14px_rgba(0,0,0,.03)] border-[1.5px] border-gray-100 flex flex-col justify-center items-center h-full text-center">
+             <h4 className="text-[0.7rem] font-bold tracking-[0.1em] uppercase text-gray-400 mb-2 w-full text-left">Subscription Leak Detector</h4>
+             <div className="flex-1 flex flex-col items-center justify-center py-4">
+                 <p className="text-xs font-medium text-gray-500">Track subscriptions to detect leaks</p>
+                 <p className="text-[10px] text-gray-400 mt-1">Chat: "I pay ₹199/mo for Netflix"</p>
+             </div>
+        </div>
+      );
+    }
 
     const yearlyTotal = subs.reduce((acc, sub) => acc + (sub.billingCycle === 'monthly' ? sub.cost * 12 : sub.cost), 0);
     const monthlyEquivalent = yearlyTotal / 12;
